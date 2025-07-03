@@ -26,6 +26,7 @@ const newsRoutes = require('./routes/news');
 const { sendDonationReminders } = require('./services/cronService');
 
 // Middleware
+app.set('trust proxy', true);
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
