@@ -7,9 +7,17 @@ const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
 require('dotenv').config();
 
-const connectDB = require('./config/database')
-connectDB();
 const app = express();
+const connectDB = require('./config/database');
+
+connectDB().then(() => {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+}).catch((err) => {
+  console.error('❌ MongoDB connection failed:', err);
+});
 
 // Import routes
 const authRoutes = require('./routes/auth');
