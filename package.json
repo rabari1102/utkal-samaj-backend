@@ -25,6 +25,7 @@
     "nodemailer": "^6.9.4",
     "pdfkit": "^0.17.1",
     "razorpay": "^2.9.2",
+    "serverless-http": "^3.2.0",
     "twilio": "^4.15.0"
   },
   "devDependencies": {
