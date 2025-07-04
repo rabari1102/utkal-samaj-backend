@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -10,29 +9,6 @@ require('dotenv').config();
 const app = express();
 const connectDB = require('./config/database');
 
-connectDB().then(() => {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-  });
-}).catch((err) => {
-  console.error('❌ MongoDB connection failed:', err);
-});
-
-// Import routes
-const authRoutes = require('./routes/auth');
-const adminRoutes = require('./routes/admin');
-const userRoutes = require('./routes/user');
-const contentRoutes = require('./routes/content');
-const eventRoutes = require('./routes/event');
-const donationRoutes = require('./routes/Donation');
-const teamRoutes = require('./routes/team');
-const galleryRoutes = require('./routes/gallery');
-const newsRoutes = require('./routes/news');
-
-// Import services
-const { sendDonationReminders } = require('./services/cronService');
-
 // Middleware
 app.set('trust proxy', true);
 app.use(helmet());
@@ -42,50 +18,53 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100
 });
 app.use(limiter);
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/content', contentRoutes);
-app.use('/api/events', eventRoutes);
-app.use('/api/donations', donationRoutes);
-app.use('/api/team', teamRoutes);
-app.use('/api/gallery', galleryRoutes);
-app.use('/api/news', newsRoutes);
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/user', require('./routes/user'));
+app.use('/api/content', require('./routes/content'));
+app.use('/api/events', require('./routes/event'));
+app.use('/api/donations', require('./routes/Donation'));
+app.use('/api/team', require('./routes/team'));
+app.use('/api/gallery', require('./routes/gallery'));
+app.use('/api/news', require('./routes/news'));
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// Cron jobs
-cron.schedule('0 9 * * *', () => {
-  console.log('Running daily donation reminder check...');
-  sendDonationReminders();
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
 });
 
 app.get('/', (req, res) => {
   res.send('✅ Backend is running!');
 });
 
-
-// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Cron jobs
+const { sendDonationReminders } = require('./services/cronService');
+cron.schedule('0 9 * * *', () => {
+  console.log('Running daily donation reminder check...');
+  sendDonationReminders();
+});
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// ✅ Only this app.listen
+connectDB().then(() => {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+}).catch((err) => {
+  console.error('❌ MongoDB connection failed:', err);
 });
