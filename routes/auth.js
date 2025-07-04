@@ -23,11 +23,11 @@ router.post('/generate-otp', [
     // Check if user exists and is approved
     const user = await User.findOne({ email }); // Changed from phoneNumber to email
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ message: 'User not found' });
     }
     
     if (!user.isApproved) {
-      return res.status(403).json({ error: 'Account not approved yet' });
+      return res.status(403).json({ message: 'Account not approved yet' });
     }
 
     // Generate OTP
@@ -69,13 +69,13 @@ router.post('/verify-otp', [
     // Verify OTP
     const otpRecord = await OTP.findOne({ email, otp }); // Changed from phoneNumber to email
     if (!otpRecord) {
-      return res.status(400).json({ error: 'Invalid OTP' });
+      return res.status(400).json({ message: 'Invalid OTP' });
     }
 
     // Get user
     const user = await User.findOne({ email }); // Changed from phoneNumber to email
     if (!user || !user.isApproved) {
-      return res.status(403).json({ error: 'User not found or not approved' });
+      return res.status(403).json({ message: 'User not found or not approved' });
     }
 
     // Delete OTP
@@ -136,7 +136,7 @@ console.log(phoneNumber,"phoneNumberphoneNumber");
 
     const existingUserByPhone = await User.findOne({ phoneNumber:phoneNumber });
     if (existingUserByPhone) {
-      return res.status(400).json({ error: 'User already exists with this phone number' });
+      return res.status(400).json({ message: 'User already exists with this phone number' });
     }
 
     // Create user
