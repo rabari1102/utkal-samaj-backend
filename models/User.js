@@ -75,8 +75,5 @@ userSchema.pre('save', function(next) {
   next();
 });
 
-// Index for better performance on email and phone lookups
-userSchema.index({ email: 1 });
-userSchema.index({ phoneNumber: 1 });
 
 module.exports = mongoose.model('User', userSchema);

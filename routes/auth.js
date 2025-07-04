@@ -132,6 +132,7 @@ router.post('/signup', [
         userId: existingUserByAddress._id
       });
     }
+console.log(phoneNumber,"phoneNumberphoneNumber");
 
     const existingUserByPhone = await User.findOne({ phoneNumber:phoneNumber });
     if (existingUserByPhone) {
@@ -144,7 +145,7 @@ router.post('/signup', [
       lastName,
       fatherName,
       email, // Added email field
-      phoneNumber :phoneNumber,
+      phoneNumber,
       presentAddress,
       permanentAddress,
       bloodGroup,

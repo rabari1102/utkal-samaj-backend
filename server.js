@@ -10,7 +10,7 @@ const app = express();
 const connectDB = require('./config/database');
 
 // Middleware
-app.set('trust proxy', true);
+app.set('trust proxy', 'loopback');
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
