@@ -13,7 +13,7 @@ const { uploadSingle } = require('../services/uploadService');
 const router = express.Router();
 
 // Get pending user approvals
-router.get('/pending-users', adminAuth, async (req, res) => {
+router.get('/pending-users', async (req, res) => {
   try {
     const pendingUsers = await User.find({ isApproved: false, isActive: true })
       .select('-__v')
@@ -27,7 +27,7 @@ router.get('/pending-users', adminAuth, async (req, res) => {
 });
 
 // Approve/reject user
-router.put('/users/:id/approval', adminAuth, [
+router.put('/users/:id/approval', [
   body('isApproved').isBoolean(),
 ], async (req, res) => {
   try {
