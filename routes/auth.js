@@ -125,9 +125,12 @@ router.post('/signup', [
     const { firstName, lastName, fatherName, email, phoneNumber, presentAddress, permanentAddress, bloodGroup } = req.body;
 
     // Check if user already exists with email or phone number
-    const existingUserByEmail = await User.findOne({ email });
-    if (existingUserByEmail) {
-      return res.status(400).json({ error: 'User already exists with this email address' });
+    const existingUserByEmail = await User.findOne({ email,  isApproved: false });
+     if (existingUserByEmail) {
+      return res.status(200).json({
+        message: 'Your ID is under process from our admin and will take 1-2 days to get created',
+        userId: existingUserByAddress._id
+      });
     }
 
     const existingUserByPhone = await User.findOne({ phone:phoneNumber });
