@@ -1,7 +1,7 @@
 const express = require("express");
 const User = require("../models/User");
 const { auth } = require("../middlewares/auth");
-const { sendSMS } = require("../services/smsService");
+const { sendEmail } = require("../services/smsService");
 
 const router = express.Router();
 
@@ -40,12 +40,12 @@ router.post("/member-details/:id", auth, async (req, res) => {
     const message = `Member Details:
 Name: ${member.firstName} ${member.lastName}
 Father: ${member.fatherName}
-Phone: ${member.phoneNumber}
+phoneNumber: ${member.phoneNumber}
 Blood Group: ${member.bloodGroup}
 Present Address: ${member.presentAddress}
 Permanent Address: ${member.permanentAddress}`;
 
-    await sendSMS(req.user.phoneNumber, message);
+    await sendEmail(req.user.phoneNumber, message);
 
     res.json({
       message: "Member details sent to your registered phone number",

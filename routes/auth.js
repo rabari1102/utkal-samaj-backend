@@ -133,7 +133,7 @@ router.post('/signup', [
       });
     }
 
-    const existingUserByPhone = await User.findOne({ phone:phoneNumber });
+    const existingUserByPhone = await User.findOne({ phoneNumber:phoneNumber });
     if (existingUserByPhone) {
       return res.status(400).json({ error: 'User already exists with this phone number' });
     }
@@ -144,7 +144,7 @@ router.post('/signup', [
       lastName,
       fatherName,
       email, // Added email field
-      phone :phoneNumber,
+      phoneNumber :phoneNumber,
       presentAddress,
       permanentAddress,
       bloodGroup,
