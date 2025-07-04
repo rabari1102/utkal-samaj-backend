@@ -29,7 +29,6 @@ router.get('/pending-users', adminAuth, async (req, res) => {
 // Approve/reject user
 router.put('/users/:id/approval', adminAuth, [
   body('isApproved').isBoolean(),
-  body('reason').optional().isString()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -38,11 +37,11 @@ router.put('/users/:id/approval', adminAuth, [
     }
 
     const { id } = req.params;
-    const { isApproved, reason } = req.body;
+    const { isApproved } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ message: 'User not found' });
     }
 
     user.isApproved = isApproved;

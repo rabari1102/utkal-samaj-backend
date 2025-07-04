@@ -6,14 +6,14 @@ const auth = async (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (!token) {
-      return res.status(401).json({ error: 'No token, authorization denied' });
+      return res.status(401).json({ message: 'No token, authorization denied' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     const user = await User.findById(decoded.id);
 
     if (!user || !user.isApproved || !user.isActive) {
-      return res.status(401).json({ error: 'User not authorized' });
+      return res.status(401).json({ message: 'User not authorized' });
     }
 
     req.user = user;
@@ -27,7 +27,7 @@ const adminAuth = async (req, res, next) => {
   try {
     await auth(req, res, () => {
       if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Admin access required' });
+        return res.status(403).json({ message: 'Admin access required' });
       }
       next();
     });
