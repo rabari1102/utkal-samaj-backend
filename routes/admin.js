@@ -71,9 +71,13 @@ router.put(
 
       user.isApproved = isApproved;
 
-       if (!isApproved) {
+       if (isApproved === 'false') {
+        console.log("hello");
+        
         user.deletedAt = new Date(); // Soft delete
       } else {
+        console.log("falsse");
+        
         user.deletedAt = null; // Restore
       }
 
