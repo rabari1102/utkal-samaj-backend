@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Member Profile - <%= member.firstName %> <%= member.lastName %>
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #2d3748;
+        line-height: 1.6;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .document-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+        overflow: hidden; /* Keep overflow hidden for normal web view */
+        position: relative;
+        /* Add padding-bottom to ensure content doesn't overlap with the footer in print */
+        padding-bottom: 70px; /* Adjust this value based on your footer's height */
+      }
+
+      .header-section {
+        background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+        color: white;
+        padding: 40px 50px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .header-section::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(
+          circle,
+          rgba(255, 255, 255, 0.1) 1px,
+          transparent 1px
+        );
+        background-size: 20px 20px;
+        animation: float 20s linear infinite;
+      }
+
+      @keyframes float {
+        0% {
+          transform: translateY(0px) rotate(0deg);
+        }
+        100% {
+          transform: translateY(-100px) rotate(360deg);
+        }
+      }
+
+      .header-content {
+        position: relative;
+        z-index: 2;
+        text-align: center;
+      }
+
+      .org-logo {
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(45deg, #48bb78, #38a169);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        font-size: 24px;
+        font-weight: bold;
+        color: white;
+      }
+
+      .org-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        letter-spacing: -0.5px;
+      }
+
+      .document-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        font-weight: 300;
+      }
+
+      .member-profile {
+        padding: 50px;
+        background: white;
+      }
+
+      .profile-header {
+        text-align: center;
+        margin-bottom: 40px;
+        padding-bottom: 30px;
+        border-bottom: 2px solid #e2e8f0;
+        position: relative;
+      }
+
+      .profile-header::after {
+        content: "";
+        position: absolute;
+        bottom: -2px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 2px;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+      }
+
+      .member-avatar {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        font-size: 32px;
+        font-weight: bold;
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .member-name {
+        font-size: 32px;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 8px;
+        letter-spacing: -0.5px;
+      }
+
+      .member-id {
+        font-size: 14px;
+        color: #718096;
+        background: #f7fafc;
+        padding: 6px 16px;
+        border-radius: 20px;
+        display: inline-block;
+        font-weight: 500;
+      }
+
+      .details-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 40px;
+      }
+
+      .detail-card {
+        background: #f8fafc;
+        padding: 25px;
+        border-radius: 12px;
+        border-left: 4px solid #667eea;
+        transition: all 0.3s ease;
+        position: relative;
+      }
+
+      .detail-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      }
+
+      .detail-card.full-width {
+        grid-column: 1 / -1;
+      }
+
+      .detail-card.blood-group {
+        border-left-color: #e53e3e;
+      }
+
+      .detail-card.contact {
+        border-left-color: #38a169;
+      }
+
+      .detail-card.address {
+        border-left-color: #3182ce;
+      }
+
+      .detail-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+      }
+
+      .detail-icon {
+        margin-right: 8px;
+        font-size: 14px;
+      }
+
+      .detail-value {
+        font-size: 16px;
+        font-weight: 500;
+        color: #2d3748;
+        line-height: 1.4;
+      }
+
+      /* Specific styling for addresses within detail-value */
+      .detail-card.address .detail-value {
+        padding: 5px 0; /* Add some padding to the value itself */
+      }
+
+      .blood-group-badge {
+        background: linear-gradient(45deg, #e53e3e, #c53030);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 25px;
+        font-size: 14px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+      }
+
+      .blood-group-badge::before {
+        content: "🩸";
+        margin-right: 8px;
+      }
+
+      .address-content {
+        background: white;
+        padding: 15px 20px; /* Adjusted padding */
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        margin-top: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); /* Added subtle shadow */
+        margin-bottom: 15px; /* Added margin for spacing after the block */
+      }
+
+      .not-provided {
+        color: #a0aec0;
+        font-style: italic;
+        font-weight: 400;
+      }
+
+      .footer-section {
+        background: #f7fafc;
+        padding: 20px 50px; /* Slightly reduced padding for a more compact footer */
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        /* Default for screen - remains at the bottom of the container */
+        width: 100%;
+        box-sizing: border-box; /* Include padding in width calculation */
+      }
+
+      .footer-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+
+      .footer-text {
+        font-size: 14px;
+        color: #718096;
+        font-weight: 500;
+      }
+
+      .generation-info {
+        font-size: 12px;
+        color: #a0aec0;
+        background: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .stats-bar {
+        background: #e2e8f0;
+        height: 4px;
+        border-radius: 2px;
+        margin: 20px 0;
+        overflow: hidden;
+      }
+
+      .stats-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        width: 85%;
+        border-radius: 2px;
+        animation: fillBar 2s ease-in-out;
+      }
+
+      @keyframes fillBar {
+        from {
+          width: 0;
+        }
+        to {
+          width: 85%;
+        }
+      }
+
+      /* *********************************************
+           * Print Specific Styles for Footer on all pages *
+           *********************************************
+        */
+      /* Replace your @media print block with this */
+      @media print {
+        body {
+          background: white !important;
+          padding: 0;
+          margin: 0;
+          font-size: 12pt;
+        }
+
+        .document-container {
+          box-shadow: none !important;
+          border-radius: 0;
+          overflow: visible;
+          padding-bottom: 100px !important;
+        }
+
+        .header-section::before {
+          display: none;
+        }
+
+        .detail-card,
+        .address-content {
+          page-break-inside: avoid !important;
+        }
+
+        .footer-section {
+          position: fixed !important;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          background: #f7fafc;
+          padding: 15px 0;
+          text-align: center;
+          border-top: 1px solid #e2e8f0;
+          font-size: 10pt;
+          z-index: 9999;
+        }
+
+        @page {
+          margin-top: 12mm;
+          margin-bottom: 25mm;
+          margin-left: 10mm;
+          margin-right: 10mm;
+        }
+
+        .member-avatar {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        .blood-group-badge,
+        .address-content {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="document-container">
+      <div class="header-section">
+        <div class="header-content">
+          <div class="org-logo">US</div>
+          <h1 class="org-title">Utkal Samaj</h1>
+          <p class="document-subtitle">Official Member Profile Document</p>
+        </div>
+      </div>
+
+      <div class="member-profile">
+        <div class="profile-header">
+          <div class="member-avatar">
+            <%= member.firstName.charAt(0) %><%= member.lastName.charAt(0) %>
+          </div>
+          <h2 class="member-name">
+            <%= member.firstName %> <%= member.lastName %>
+          </h2>
+          <div class="member-id">ID: <%= member._id %></div>
+        </div>
+
+        <div class="details-grid">
+          <div class="detail-card">
+            <div class="detail-label">
+              <span class="detail-icon">👤</span>
+              Full Name
+            </div>
+            <div class="detail-value">
+              <%= member.firstName %> <%= member.lastName %>
+            </div>
+          </div>
+
+          <div class="detail-card">
+            <div class="detail-label">
+              <span class="detail-icon">👨‍👧‍👦</span>
+              Father's Name
+            </div>
+            <div class="detail-value">
+              <% if (member.fatherName) { %> <%= member.fatherName %> <% } else
+              { %>
+              <span class="not-provided">Not provided</span>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="detail-card contact">
+            <div class="detail-label">
+              <span class="detail-icon">📱</span>
+              Phone Number
+            </div>
+            <div class="detail-value">
+              <% if (member.phoneNumber) { %> <%= member.phoneNumber %> <% }
+              else { %>
+              <span class="not-provided">Not provided</span>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="detail-card blood-group">
+            <div class="detail-label">
+              <span class="detail-icon">🩸</span>
+              Blood Group
+            </div>
+            <div class="detail-value">
+              <% if (member.bloodGroup) { %>
+              <span class="blood-group-badge"><%= member.bloodGroup %></span>
+              <% } else { %>
+              <span class="not-provided">Not provided</span>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="detail-card address full-width">
+            <div class="detail-label">
+              <span class="detail-icon">🏠</span>
+              Present Address
+            </div>
+            <div class="detail-value">
+              <% if (member.presentAddress) { %>
+              <div class="address-content"><%= member.presentAddress %></div>
+              <% } else { %>
+              <span class="not-provided">Not provided</span>
+              <% } %>
+            </div>
+          </div>
+
+        <div class="stats-bar">
+          <div class="stats-fill"></div>
+        </div>
+        <p
+          style="
+            font-size: 12px;
+            color: #718096;
+            text-align: center;
+            margin-top: 10px;
+          "
+        >
+          Profile Information: Complete
+        </p>
+      </div>
+
+      <div class="footer-section">
+        <div class="footer-content">
+          <div class="footer-text">
+            © 2025 Utkal Samaj - Official Member Document
+          </div>
+          <div class="generation-info">
+            Generated: <%= new Date().toLocaleDateString('en-US', { year:
+            'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:
+            '2-digit' }) %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -47,7 +47,7 @@ router.post(
       }).save();
 
       // Send OTP via Email
-      await sendOTP(email, otp); // Changed from phoneNumber to email
+      await sendOTP(email, otp, user); // Changed from phoneNumber to email
 
       res.json({ message: "OTP sent successfully to your email" });
     } catch (error) {
@@ -165,7 +165,6 @@ router.post(
           userId: existingUserByAddress._id,
         });
       }
-      console.log(phoneNumber, "phoneNumberphoneNumber");
 
       const existingUserByPhone = await User.findOne({
         phoneNumber: phoneNumber,

@@ -26,7 +26,7 @@ const createCustomTransporter = () => {
 
 const sendEmail = async (to, subject, htmlContent, textContent) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    if (!process.env.EMAIL_USER) {
       console.log('Email would be sent:', { to, subject, htmlContent });
       return { success: true, message: 'Email simulation' };
     }
@@ -45,6 +45,7 @@ const sendEmail = async (to, subject, htmlContent, textContent) => {
     };
 
     const result = await transporter.sendMail(mailOptions);
+    console.log(result,"resultresultresult");
     
     return { success: true, messageId: result.messageId };
   } catch (error) {

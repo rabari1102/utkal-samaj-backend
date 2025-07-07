@@ -1,8 +1,8 @@
 const express = require("express");
 const User = require("../models/User");
 const { auth } = require("../middlewares/auth");
-const { sendEmail } = require("../services/smsService");
-
+const { sendEmail } = require("../services/emailService");
+const generateMemberPDF = require('../utils/generatePdf'); 
 const router = express.Router();
 
 // Get all members (only name and blood group)
@@ -52,31 +52,152 @@ router.post(
     try {
       const { id } = req.params;
 
+      // Validate MongoDB ObjectId format
+      if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({ 
+          error: "Invalid member ID format" 
+        });
+      }
+
       const member = await User.findById(id).select(
         "firstName lastName fatherName presentAddress permanentAddress phoneNumber bloodGroup"
       );
 
       if (!member) {
-        return res.status(404).json({ error: "Member not found" });
+        return res.status(404).json({ 
+          error: "Member not found",
+          message: "The requested member does not exist in our records"
+        });
       }
 
-      // Send details via SMS to the requesting user's phone
-      const message = `Member Details:
-Name: ${member.firstName} ${member.lastName}
-Father: ${member.fatherName}
-phoneNumber: ${member.phoneNumber}
-Blood Group: ${member.bloodGroup}
-Present Address: ${member.presentAddress}
-Permanent Address: ${member.permanentAddress}`;
+      // Enhanced email subject and content
+      const subject = `📄 Member Profile - ${member.firstName} ${member.lastName}`;
+      
+      const htmlContent = `
+        <div style="font-family: 'Arial', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h2 style="margin: 0; font-size: 24px;">🏛️ Utkal Samaj</h2>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">Member Profile Document</p>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <p style="font-size: 16px; color: #333; margin-bottom: 20px;">
+              Dear <strong>${req.user.firstName || 'User'}</strong>,
+            </p>
+            
+            <p style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 15px;">
+              Please find attached the detailed member profile document for:
+            </p>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #667eea; margin: 20px 0;">
+              <h3 style="margin: 0 0 10px 0; color: #333; font-size: 18px;">
+                👤 ${member.firstName} ${member.lastName}
+              </h3>
+              <p style="margin: 0; color: #666; font-size: 14px;">
+                Member ID: ${member._id}
+              </p>
+              <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">
+                📱 ${member.phoneNumber || 'Phone not provided'}
+              </p>
+            </div>
+            
+            <p style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 15px;">
+              The document contains all available member information in a professionally formatted PDF layout.
+            </p>
+            
+            <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 0; font-size: 14px; color: #2d5a2d;">
+                <strong>📎 Attachment:</strong> Member_${member.firstName}_${member.lastName}_Profile.pdf
+              </p>
+            </div>
+            
+            <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+            
+            <p style="font-size: 12px; color: #999; text-align: center; margin: 0;">
+              Best regards,<br>
+              <strong>Utkal Samaj Management System</strong><br>
+              Generated on: ${new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+          </div>
+        </div>
+      `;
+      
+      const textContent = `
+        Utkal Samaj - Member Profile Document
+        
+        Dear ${req.user.firstName || 'User'},
+        
+        Please find attached the detailed member profile document for ${member.firstName} ${member.lastName}.
+        
+        Member Details:
+        - Name: ${member.firstName} ${member.lastName}
+        - Member ID: ${member._id}
+        - Phone: ${member.phoneNumber || 'Not provided'}
+        - Father's Name: ${member.fatherName || 'Not provided'}
+        - Blood Group: ${member.bloodGroup || 'Not provided'}
+        
+        The complete information is available in the attached PDF document.
+        
+        Best regards,
+        Utkal Samaj Management System
+        Generated on: ${new Date().toLocaleDateString()}
+      `;
 
-      await sendEmail(req.user.phoneNumber, message);
+      console.log(`Generating PDF for member: ${member.firstName} ${member.lastName}`);
+      
+      // Generate the PDF
+      const pdfBuffer = await generateMemberPDF(member);
+      
+      console.log(`PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
 
+      // Send email with PDF attachment
+      await sendEmail(
+        req.user.email,
+        subject,
+        htmlContent,
+        textContent,
+        [
+          {
+            filename: `Member_${member.firstName}_${member.lastName}_Profile.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf'
+          }
+        ]
+      );
+
+      console.log(`Email sent successfully to: ${req.user.email}`);
+
+      // Success response
       res.json({
-        message: "Member details sent to your registered phone number",
+        success: true,
+        message: `Member profile PDF for ${member.firstName} ${member.lastName} has been sent to your email.`,
+        data: {
+          memberName: `${member.firstName} ${member.lastName}`,
+          memberId: member._id,
+          emailSent: true,
+          recipientEmail: req.user.email,
+          pdfSize: `${(pdfBuffer.length / 1024).toFixed(2)} KB`,
+          generatedAt: new Date().toISOString()
+        }
       });
+
     } catch (error) {
-      console.error("Get member details error:", error);
-      res.status(500).json({ error: "Server error" });
+      console.error("Member details PDF generation error:", error);
+      
+      // Enhanced error response
+      res.status(500).json({ 
+        success: false,
+        error: "Server error",
+        message: "Failed to generate or send member details PDF",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        timestamp: new Date().toISOString()
+      });
     }
   }
 );
