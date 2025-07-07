@@ -207,7 +207,7 @@ router.post(
 // Get current user
 router.get("/me", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id,deletedAt: false).select("-__v");
+    const user = await User.findById(req.user.id).select("-__v");
     res.json(user);
   } catch (error) {
     console.error("Get user error:", error);
