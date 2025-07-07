@@ -26,10 +26,11 @@ router.get("/pending-users", auth(["admin"]), async (req, res) => {
     const total = await User.countDocuments({
       isApproved: false,
       isActive: true,
+      deletedAt: false 
     });
 
     // Fetch paginated users
-    const pendingUsers = await User.find({ isApproved: false, isActive: true })
+    const pendingUsers = await User.find({ isApproved: false, isActive: true, deletedAt: false  })
       .select("firstName lastName bloodGroup")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -69,16 +70,24 @@ router.put(
       }
 
       user.isApproved = isApproved;
+
+       if (!isApproved) {
+        user.deletedAt = new Date(); // Soft delete
+      } else {
+        user.deletedAt = null; // Restore
+      }
+
       await user.save();
 
       res.json({
-        message: `User ${isApproved ? "approved" : "rejected"} successfully`,
+        message: `User ${isApproved ? "approved" : "soft deleted"} successfully`,
         user: {
           id: user._id,
           firstName: user.firstName,
           lastName: user.lastName,
           phoneNumber: user.phoneNumber,
           isApproved: user.isApproved,
+          isDeleted: user.isDeleted,
         },
       });
     } catch (error) {

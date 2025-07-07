@@ -72,7 +72,8 @@ const userSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  deletedAt: { type: Date, default: null }
 });
 
 userSchema.pre('save', function(next) {

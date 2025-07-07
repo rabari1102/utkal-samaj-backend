@@ -18,6 +18,7 @@ router.get("/members", auth(["user", "admin"]), async (req, res) => {
       isApproved: true,
       isActive: true,
       role: "user",
+      deletedAt: false
     });
 
     // Fetch paginated member list
@@ -25,6 +26,7 @@ router.get("/members", auth(["user", "admin"]), async (req, res) => {
       isApproved: true,
       isActive: true,
       role: "user",
+      deletedAt: false
     })
       .select("firstName lastName bloodGroup")
       .sort({ firstName: 1 })
