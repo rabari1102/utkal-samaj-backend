@@ -7,13 +7,13 @@ const Team = require('../models/Team');
 const Gallery = require('../models/Gallery');
 const News = require('../models/news');
 const Achievement = require('../models/Achivments');
-const { adminAuth } = require('../middlewares/auth');
 const { uploadSingle } = require('../services/uploadService');
+const { auth } = require("../middlewares/auth");
 
 const router = express.Router();
 
 // Get pending user approvals
-router.get('/pending-users', async (req, res) => {
+router.get('/pending-users', auth(['admin']), async (req, res) => {
   try {
     const pendingUsers = await User.find({ isApproved: false, isActive: true })
       .select('-__v')
@@ -27,7 +27,7 @@ router.get('/pending-users', async (req, res) => {
 });
 
 // Approve/reject user
-router.put('/users/:id/approval', [
+router.put('/users/:id/approval', auth(['admin']),[
   body('isApproved').isBoolean(),
 ], async (req, res) => {
   try {
@@ -64,7 +64,7 @@ router.put('/users/:id/approval', [
 });
 
 // Content management
-router.put('/content/:section', adminAuth, uploadSingle, [
+router.put('/content/:section', auth(['admin']), uploadSingle, [
   body('title').optional().isString(),
   body('content').isString(),
   body('link').optional().isURL()
@@ -97,7 +97,7 @@ router.put('/content/:section', adminAuth, uploadSingle, [
 });
 
 // Event management
-router.post('/events', adminAuth, uploadSingle, [
+router.post('/events', auth(['admin']), uploadSingle, [
   body('title').trim().isLength({ min: 3 }),
   body('description').trim().isLength({ min: 10 }),
   body('eventDate').isISO8601(),
@@ -126,7 +126,7 @@ router.post('/events', adminAuth, uploadSingle, [
 });
 
 // Team management
-router.post('/team', adminAuth, uploadSingle, [
+router.post('/team', auth(['admin']), uploadSingle, [
   body('category').isIn(['school', 'dharamshala', 'temple', 'core']),
   body('name').trim().isLength({ min: 2 }),
   body('position').trim().isLength({ min: 2 }),
@@ -153,7 +153,7 @@ router.post('/team', adminAuth, uploadSingle, [
 });
 
 // Gallery management
-router.post('/gallery', adminAuth, uploadSingle, [
+router.post('/gallery', auth(['admin']), uploadSingle, [
   body('eventName').trim().isLength({ min: 3 }),
   body('eventDate').isISO8601()
 ], async (req, res) => {
@@ -189,7 +189,7 @@ router.post('/gallery', adminAuth, uploadSingle, [
 });
 
 // News management
-router.post('/news', adminAuth, uploadSingle, [
+router.post('/news', auth(['admin']), uploadSingle, [
   body('title').trim().isLength({ min: 3 }),
   body('content').trim().isLength({ min: 10 }),
   body('isUpcoming').optional().isBoolean(),
@@ -215,7 +215,7 @@ router.post('/news', adminAuth, uploadSingle, [
 });
 
 // Achievement management
-router.post('/achievements', adminAuth, uploadSingle, [
+router.post('/achievements', auth(['admin']), uploadSingle, [
   body('title').trim().isLength({ min: 3 }),
   body('description').trim().isLength({ min: 10 }),
   body('achievementDate').isISO8601(),

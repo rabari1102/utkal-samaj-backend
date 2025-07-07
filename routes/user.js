@@ -6,7 +6,7 @@ const { sendEmail } = require("../services/smsService");
 const router = express.Router();
 
 // Get all members (only name and blood group)
-router.get("/members", auth, async (req, res) => {
+router.get("/members", auth(['user', 'admin']), async (req, res) => {
   try {
     const members = await User.find({
       isApproved: true,
@@ -24,7 +24,7 @@ router.get("/members", auth, async (req, res) => {
 });
 
 // Get member details (send to registered phone)
-router.post("/member-details/:id", auth, async (req, res) => {
+router.post("/member-details/:id", auth(['user', 'admin']), async (req, res) => {
   try {
     const { id } = req.params;
 
