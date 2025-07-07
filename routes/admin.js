@@ -26,11 +26,11 @@ router.get("/pending-users", auth(["admin"]), async (req, res) => {
     const total = await User.countDocuments({
       isApproved: false,
       isActive: true,
-      deletedAt: false 
+      deletedAt: null 
     });
 
     // Fetch paginated users
-    const pendingUsers = await User.find({ isApproved: false, isActive: true, deletedAt: false  })
+    const pendingUsers = await User.find({ isApproved: false, isActive: true, deletedAt: null  })
       .select("firstName lastName bloodGroup")
       .sort({ createdAt: -1 })
       .skip(skip)

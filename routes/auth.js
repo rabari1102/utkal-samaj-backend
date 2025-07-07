@@ -24,7 +24,7 @@ router.post(
       const { email } = req.body; // Changed from phoneNumber to email
 
       // Check if user exists and is approved
-      const user = await User.findOne({ email, deletedAt: false }); // Changed from phoneNumber to email
+      const user = await User.findOne({ email, deletedAt: null }); // Changed from phoneNumber to email
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -85,7 +85,7 @@ router.post(
       }
 
       // Get user
-      const user = await User.findOne({ email, deletedAt: false }); // Changed from phoneNumber to email
+      const user = await User.findOne({ email, deletedAt: null }); // Changed from phoneNumber to email
       if (!user || !user.isApproved) {
         return res
           .status(403)
@@ -157,7 +157,7 @@ router.post(
       const existingUserByEmail = await User.findOne({
         email,
         isApproved: false,
-        deletedAt: false
+        deletedAt: null
       });
       if (existingUserByEmail) {
         return res.status(200).json({
@@ -169,7 +169,7 @@ router.post(
 
       const existingUserByPhone = await User.findOne({
         phoneNumber: phoneNumber,
-        deletedAt: false
+        deletedAt: null
       });
       if (existingUserByPhone) {
         return res
