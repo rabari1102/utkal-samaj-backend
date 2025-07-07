@@ -26,6 +26,11 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email address']
   },
+  token:{
+    type: String,
+    required: true,
+    unique: true,
+  },
   phoneNumber: {
     type: String,
     required: true,
