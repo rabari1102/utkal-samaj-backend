@@ -8,15 +8,36 @@ const router = express.Router();
 // Get all members (only name and blood group)
 router.get("/members", auth(["user", "admin"]), async (req, res) => {
   try {
+    // Extract pagination values from query (with defaults)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Total count for pagination
+    const total = await User.countDocuments({
+      isApproved: true,
+      isActive: true,
+      role: "user",
+    });
+
+    // Fetch paginated member list
     const members = await User.find({
       isApproved: true,
       isActive: true,
       role: "user",
     })
       .select("firstName lastName bloodGroup")
-      .sort({ firstName: 1 });
+      .sort({ firstName: 1 })
+      .skip(skip)
+      .limit(limit);
 
-    res.json(members);
+    res.json({
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      totalMembers: total,
+      members,
+    });
   } catch (error) {
     console.error("Get members error:", error);
     res.status(500).json({ error: "Server error" });

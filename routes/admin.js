@@ -15,11 +15,30 @@ const router = express.Router();
 // Get pending user approvals
 router.get('/pending-users', auth(['admin']), async (req, res) => {
   try {
+    // Default values
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    // Calculate skip value
+    const skip = (page - 1) * limit;
+
+    // Query total count
+    const total = await User.countDocuments({ isApproved: false, isActive: true });
+
+    // Fetch paginated users
     const pendingUsers = await User.find({ isApproved: false, isActive: true })
       .select('-__v')
-      .sort({ createdAt: -1 });
-    
-    res.json(pendingUsers);
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      totalUsers: total,
+      users: pendingUsers
+    });
   } catch (error) {
     console.error('Get pending users error:', error);
     res.status(500).json({ error: 'Server error' });
