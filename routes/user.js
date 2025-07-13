@@ -204,36 +204,36 @@ router.post(
   }
 );
 
-
 router.get("/bloodGroup-list", async (req, res) => {
   try {
-    // Default values
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-
-    // Calculate skip value
     const skip = (page - 1) * limit;
 
-    // Query total count
     const total = await User.countDocuments({
       isApproved: false,
       isActive: true,
-      deletedAt: null 
+      deletedAt: null,
     });
 
-    // Fetch paginated users
-    const pendingUsers = await User.find({ isApproved: false, isActive: true, deletedAt: null  })
+    const pendingUsers = await User.find({
+      isApproved: false,
+      isActive: true,
+      deletedAt: null,
+    })
       .select("firstName lastName bloodGroup")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
     res.json({
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      totalUsers: total,
-      users: pendingUsers,
+      data: {
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        totalUsers: total,
+        users: pendingUsers,
+      }
     });
   } catch (error) {
     console.error("Get blood group users error:", error);

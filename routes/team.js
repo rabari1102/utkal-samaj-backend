@@ -48,13 +48,12 @@ router.get('/tree', async (req, res) => {
 
     const trees = await Promise.all(rootNodes.map(root => buildTree(root._id)));
 
-    res.json(trees); // Return list of full trees
+    res.json({ data: trees });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.get('/tree/:id', async (req, res) => {
   const nodeId = req.params.id;
@@ -81,13 +80,12 @@ router.get('/tree/:id', async (req, res) => {
 
     if (!tree) return res.status(404).json({ message: "Node not found" });
 
-    res.json(tree);
+  res.json({ data: trees });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.put('/:id', upload.single('profilePicture'), async (req, res) => {
   try {
