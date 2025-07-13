@@ -3,7 +3,7 @@ const { body, validationResult } = require("express-validator");
 const User = require("../models/User");
 const Content = require("../models/Content");
 const Event = require("../models/Event");
-const Team = require("../models/Team");
+const TeamNode = require("../models/Team");
 const Gallery = require("../models/Gallery");
 const News = require("../models/news");
 const Achievement = require("../models/Achivments");
@@ -170,39 +170,6 @@ router.post(
       res.status(201).json(event);
     } catch (error) {
       console.error("Event creation error:", error);
-      res.status(500).json({ error: "Server error" });
-    }
-  }
-);
-
-// Team management
-router.post(
-  "/team",
-  auth(["admin"]),
-  uploadSingle,
-  [
-    body("category").isIn(["school", "dharamshala", "temple", "core"]),
-    body("name").trim().isLength({ min: 2 }),
-    body("position").trim().isLength({ min: 2 }),
-    body("description").optional().isString(),
-    body("operations").optional().isArray(),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const teamData = { ...req.body };
-      if (req.file) teamData.image = req.file.path;
-
-      const teamMember = new Team(teamData);
-      await teamMember.save();
-
-      res.status(201).json(teamMember);
-    } catch (error) {
-      console.error("Team creation error:", error);
       res.status(500).json({ error: "Server error" });
     }
   }

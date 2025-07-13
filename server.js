@@ -33,6 +33,7 @@ app.use('/api/donations', require('./routes/Donation'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/news', require('./routes/news'));
+app.use('/uploads', express.static('uploads'));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
