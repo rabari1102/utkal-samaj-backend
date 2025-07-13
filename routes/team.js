@@ -26,6 +26,36 @@ router.post('/', upload.single('profilePicture'), async (req, res) => {
 
 const DEFAULT_PROFILE_PIC = '/uploads/1752403303248-profilePicture.jpeg';
 
+router.get('/tree', async (req, res) => {
+  try {
+    const DEFAULT_PROFILE_PIC = 'https://example.com/default.jpg'; // Replace with actual
+
+    // Recursive function to build tree
+    const buildTree = async (id) => {
+      const node = await TeamNode.findById(id).lean();
+      if (!node) return null;
+
+      if (!node.profilePicture) node.profilePicture = DEFAULT_PROFILE_PIC;
+
+      const children = await TeamNode.find({ parent: id }).lean();
+      node.children = await Promise.all(children.map(child => buildTree(child._id)));
+
+      return node;
+    };
+
+    // Find all root nodes (nodes with no parent)
+    const rootNodes = await TeamNode.find({ parent: null }).lean();
+
+    const trees = await Promise.all(rootNodes.map(root => buildTree(root._id)));
+
+    res.json(trees); // Return list of full trees
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 router.get('/tree/:id', async (req, res) => {
   const nodeId = req.params.id;
 
