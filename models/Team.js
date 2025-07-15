@@ -5,7 +5,7 @@ const teamNodeSchema = new mongoose.Schema({
   role: { type: String, required: false },
   samiti: { type: String, required: false },
   parent: { type: mongoose.Schema.Types.ObjectId, ref: 'TeamNode', default: null },
-  profilePicture: { type: String }
+  profilePicture: { type: Buffer }
 }, { timestamps: true });
 
 module.exports = mongoose.model('TeamNode', teamNodeSchema);

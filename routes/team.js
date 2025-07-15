@@ -1,11 +1,11 @@
-const express = require('express');
-const TeamNode = require('../models/Team');
-const upload = require('../utils/upload');
-const path = require('path');
+const express = require("express");
+const TeamNode = require("../models/Team");
+const upload = require("../utils/upload");
+const path = require("path");
 const router = express.Router();
 
 // Team management
-router.post('/', upload.single('profilePicture'), async (req, res) => {
+router.post("/", upload.single("profilePicture"), async (req, res) => {
   try {
     const { name, role, samiti, parent } = req.body;
 
@@ -14,21 +14,24 @@ router.post('/', upload.single('profilePicture'), async (req, res) => {
       role,
       samiti,
       parent: parent || null,
-      profilePicture: req.file ? `/uploads/${req.file.filename}` : null
+      profilePicture: req.file ? req.file.buffer : null,
     });
 
     await teamNode.save();
-    res.status(201).json(teamNode);
+
+    res
+      .status(201)
+      .json({ message: "Team node created successfully", id: teamNode._id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-const DEFAULT_PROFILE_PIC = '/uploads/1752403303248-profilePicture.jpeg';
+const DEFAULT_PROFILE_PIC = "/uploads/1752403303248-profilePicture.jpeg";
 
-router.get('/tree', async (req, res) => {
+router.get("/tree", async (req, res) => {
   try {
-    const DEFAULT_PROFILE_PIC = 'https://example.com/default.jpg'; // Replace with actual
+    const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22";
 
     // Recursive function to build tree
     const buildTree = async (id) => {
@@ -38,24 +41,29 @@ router.get('/tree', async (req, res) => {
       if (!node.profilePicture) node.profilePicture = DEFAULT_PROFILE_PIC;
 
       const children = await TeamNode.find({ parent: id }).lean();
-      node.children = await Promise.all(children.map(child => buildTree(child._id)));
+      node.children = await Promise.all(
+        children.map((child) => buildTree(child._id))
+      );
 
       return node;
     };
 
-    // Find all root nodes (nodes with no parent)
-    const rootNodes = await TeamNode.find({ parent: null }).lean();
+    // Step 1: Find all samiti nodes (direct children of the fixed parent)
+    const samitis = await TeamNode.find({ parent: SAMITI_PARENT_ID }).lean();
 
-    const trees = await Promise.all(rootNodes.map(root => buildTree(root._id)));
+    // Step 2: Build tree for each samiti
+    const samitiTrees = await Promise.all(
+      samitis.map((samiti) => buildTree(samiti._id))
+    );
 
-    res.json({ data: trees });
+    res.json({ data: samitiTrees });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/tree/:id', async (req, res) => {
+router.get("/tree/:id", async (req, res) => {
   const nodeId = req.params.id;
 
   try {
@@ -71,7 +79,9 @@ router.get('/tree/:id', async (req, res) => {
       const children = await TeamNode.find({ parent: id }).lean();
 
       // Recursively add children
-      node.children = await Promise.all(children.map(child => buildTree(child._id)));
+      node.children = await Promise.all(
+        children.map((child) => buildTree(child._id))
+      );
 
       return node;
     };
@@ -80,37 +90,46 @@ router.get('/tree/:id', async (req, res) => {
 
     if (!tree) return res.status(404).json({ message: "Node not found" });
 
-  res.json({ data: trees });
+    res.json({ data: trees });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/:id', upload.single('profilePicture'), async (req, res) => {
+router.put("/:id", upload.single("profilePicture"), async (req, res) => {
   try {
     const { name, role, samiti, parent } = req.body;
 
-    const updateData = {
-      ...(name && { name }),
-      ...(role && { role }),
-      ...(samiti && { samiti }),
-      ...(parent !== undefined && { parent }),
-    };
+    const updateData = {};
+
+    if (name) updateData.name = name;
+    if (role) updateData.role = role;
+    if (samiti) updateData.samiti = samiti;
+    if (parent !== undefined) updateData.parent = parent;
+    console.log(req.file.buffer, "req.file.bufferreq.file.buffer");
 
     if (req.file) {
-      updateData.profilePicture = `/uploads/${req.file.filename}`;
+      updateData.profilePicture = req.file.buffer;
     }
 
-    const updated = await TeamNode.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const updatedNode = await TeamNode.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    );
 
-    if (!updated) return res.status(404).json({ message: 'Team member not found' });
+    if (!updatedNode) {
+      return res.status(404).json({ message: "Team member not found" });
+    }
 
-    res.json(updated);
+    const responseObj = updatedNode.toObject();
+    delete responseObj.profilePicture;
+
+    res.json(responseObj);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 module.exports = router;

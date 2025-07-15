@@ -138,10 +138,6 @@ dist/
 *.sqlite
 *.sqlite3
 
-# Upload directories
-uploads/
-public/uploads/
-
 # Certificate files
 *.pem
 *.key

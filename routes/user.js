@@ -1,8 +1,9 @@
 const express = require("express");
 const User = require("../models/User");
+const bloodDonation = require("../models/bloodDonationData");
 const { auth } = require("../middlewares/auth");
 const { sendEmail } = require("../services/emailService");
-const generateMemberPDF = require('../utils/generatePdf'); 
+const generateMemberPDF = require("../utils/generatePdf");
 const router = express.Router();
 
 // Get all members (only name and blood group)
@@ -18,7 +19,7 @@ router.get("/members", auth(["user", "admin"]), async (req, res) => {
       isApproved: true,
       isActive: true,
       role: "user",
-      deletedAt: null
+      deletedAt: null,
     });
 
     // Fetch paginated member list
@@ -26,7 +27,7 @@ router.get("/members", auth(["user", "admin"]), async (req, res) => {
       isApproved: true,
       isActive: true,
       role: "user",
-      deletedAt: null
+      deletedAt: null,
     })
       .select("firstName lastName bloodGroup")
       .sort({ firstName: 1 })
@@ -56,8 +57,8 @@ router.post(
 
       // Validate MongoDB ObjectId format
       if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-        return res.status(400).json({ 
-          error: "Invalid member ID format" 
+        return res.status(400).json({
+          error: "Invalid member ID format",
         });
       }
 
@@ -66,15 +67,15 @@ router.post(
       );
 
       if (!member) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: "Member not found",
-          message: "The requested member does not exist in our records"
+          message: "The requested member does not exist in our records",
         });
       }
 
       // Enhanced email subject and content
       const subject = `📄 Member Profile - ${member.firstName} ${member.lastName}`;
-      
+
       const htmlContent = `
         <div style="font-family: 'Arial', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -84,7 +85,7 @@ router.post(
           
           <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
             <p style="font-size: 16px; color: #333; margin-bottom: 20px;">
-              Dear <strong>${req.user.firstName || 'User'}</strong>,
+              Dear <strong>${req.user.firstName || "User"}</strong>,
             </p>
             
             <p style="font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 15px;">
@@ -99,7 +100,7 @@ router.post(
                 Member ID: ${member._id}
               </p>
               <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">
-                📱 ${member.phoneNumber || 'Phone not provided'}
+                📱 ${member.phoneNumber || "Phone not provided"}
               </p>
             </div>
             
@@ -109,7 +110,9 @@ router.post(
             
             <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0;">
               <p style="margin: 0; font-size: 14px; color: #2d5a2d;">
-                <strong>📎 Attachment:</strong> Member_${member.firstName}_${member.lastName}_Profile.pdf
+                <strong>📎 Attachment:</strong> Member_${member.firstName}_${
+        member.lastName
+      }_Profile.pdf
               </p>
             </div>
             
@@ -118,31 +121,33 @@ router.post(
             <p style="font-size: 12px; color: #999; text-align: center; margin: 0;">
               Best regards,<br>
               <strong>Utkal Samaj Management System</strong><br>
-              Generated on: ${new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
+              Generated on: ${new Date().toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
               })}
             </p>
           </div>
         </div>
       `;
-      
+
       const textContent = `
         Utkal Samaj - Member Profile Document
         
-        Dear ${req.user.firstName || 'User'},
+        Dear ${req.user.firstName || "User"},
         
-        Please find attached the detailed member profile document for ${member.firstName} ${member.lastName}.
+        Please find attached the detailed member profile document for ${
+          member.firstName
+        } ${member.lastName}.
         
         Member Details:
         - Name: ${member.firstName} ${member.lastName}
         - Member ID: ${member._id}
-        - Phone: ${member.phoneNumber || 'Not provided'}
-        - Father's Name: ${member.fatherName || 'Not provided'}
-        - Blood Group: ${member.bloodGroup || 'Not provided'}
+        - Phone: ${member.phoneNumber || "Not provided"}
+        - Father's Name: ${member.fatherName || "Not provided"}
+        - Blood Group: ${member.bloodGroup || "Not provided"}
         
         The complete information is available in the attached PDF document.
         
@@ -151,27 +156,25 @@ router.post(
         Generated on: ${new Date().toLocaleDateString()}
       `;
 
-      console.log(`Generating PDF for member: ${member.firstName} ${member.lastName}`);
-      
+      console.log(
+        `Generating PDF for member: ${member.firstName} ${member.lastName}`
+      );
+
       // Generate the PDF
       const pdfBuffer = await generateMemberPDF(member);
-      
-      console.log(`PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
+
+      console.log(
+        `PDF generated successfully. Size: ${pdfBuffer.length} bytes`
+      );
 
       // Send email with PDF attachment
-      await sendEmail(
-        req.user.email,
-        subject,
-        htmlContent,
-        textContent,
-        [
-          {
-            filename: `Member_${member.firstName}_${member.lastName}_Profile.pdf`,
-            content: pdfBuffer,
-            contentType: 'application/pdf'
-          }
-        ]
-      );
+      await sendEmail(req.user.email, subject, htmlContent, textContent, [
+        {
+          filename: `Member_${member.firstName}_${member.lastName}_Profile.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ]);
 
       console.log(`Email sent successfully to: ${req.user.email}`);
 
@@ -185,24 +188,38 @@ router.post(
           emailSent: true,
           recipientEmail: req.user.email,
           pdfSize: `${(pdfBuffer.length / 1024).toFixed(2)} KB`,
-          generatedAt: new Date().toISOString()
-        }
+          generatedAt: new Date().toISOString(),
+        },
       });
-
     } catch (error) {
       console.error("Member details PDF generation error:", error);
-      
+
       // Enhanced error response
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         error: "Server error",
         message: "Failed to generate or send member details PDF",
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-        timestamp: new Date().toISOString()
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+        timestamp: new Date().toISOString(),
       });
     }
   }
 );
+
+router.post("/donors", async (req, res) => {
+  try {
+    const donors = await bloodDonation.insertMany(req.body);
+    res.status(201).json({
+      message: "All donors saved successfully.",
+      count: donors.length,
+    });
+  } catch (error) {
+    res
+      .status(400)
+      .json({ message: "Bulk insert failed.", error: error.message });
+  }
+});
 
 router.get("/bloodGroup-list", async (req, res) => {
   try {
@@ -210,21 +227,34 @@ router.get("/bloodGroup-list", async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const total = await User.countDocuments({
-      isApproved: false,
-      isActive: true,
-      deletedAt: null,
-    });
+    const { bloodGroup, search } = req.query;
+    
+    const query = {};
+    
+    if (bloodGroup) {
+      query.bloodGroup = bloodGroup;
+    }
+    
+    if (search) {
+      const safeSearch = escapeRegex(search);
+      const regex = new RegExp(safeSearch, "i");
+      query.$or = [
+        { firstName: regex },
+        { lastName: regex },
+        { bloodGroup: regex },
+      ];
+    }
+    console.log(bloodGroup, "bloodGroupbloodGroup");
 
-    const pendingUsers = await User.find({
-      isApproved: false,
-      isActive: true,
-      deletedAt: null,
-    })
-      .select("firstName lastName bloodGroup")
+    const total = await bloodDonation.countDocuments(query);
+
+    const users = await bloodDonation
+      .find(query)
+      .select("firstName lastName bloodGroup createdAt")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     res.json({
       data: {
@@ -232,8 +262,8 @@ router.get("/bloodGroup-list", async (req, res) => {
         limit,
         totalPages: Math.ceil(total / limit),
         totalUsers: total,
-        users: pendingUsers,
-      }
+        users,
+      },
     });
   } catch (error) {
     console.error("Get blood group users error:", error);
