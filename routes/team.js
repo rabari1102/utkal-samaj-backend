@@ -31,7 +31,7 @@ const DEFAULT_PROFILE_PIC = "/uploads/1752403303248-profilePicture.jpeg";
 
 router.get("/tree", async (req, res) => {
   try {
-    const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22";
+    const SAMITI_PARENT_ID = "68738ad61edecc358a584c9c";
 
     // Recursive function to build tree
     const buildTree = async (id) => {
@@ -49,7 +49,7 @@ router.get("/tree", async (req, res) => {
     };
 
     // Step 1: Find all samiti nodes (direct children of the fixed parent)
-    const samitis = await TeamNode.find({ parent: SAMITI_PARENT_ID }).lean();
+    const samitis = await TeamNode.find({ _id: SAMITI_PARENT_ID }).lean();
 
     // Step 2: Build tree for each samiti
     const samitiTrees = await Promise.all(
