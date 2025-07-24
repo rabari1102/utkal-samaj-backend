@@ -5,6 +5,7 @@ const Content = require("../models/Content");
 const Event = require("../models/Event");
 const TeamNode = require("../models/Team");
 const Gallery = require("../models/Gallery");
+const upload = require("../utils/upload");
 const News = require("../models/news");
 const Achievement = require("../models/Achivments");
 const { uploadSingle } = require("../services/uploadService");
@@ -26,11 +27,15 @@ router.get("/pending-users", auth(["admin"]), async (req, res) => {
     const total = await User.countDocuments({
       isApproved: false,
       isActive: true,
-      deletedAt: null 
+      deletedAt: null,
     });
 
     // Fetch paginated users
-    const pendingUsers = await User.find({ isApproved: false, isActive: true, deletedAt: null  })
+    const pendingUsers = await User.find({
+      isApproved: false,
+      isActive: true,
+      deletedAt: null,
+    })
       .select("firstName lastName bloodGroup")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -71,20 +76,22 @@ router.put(
 
       user.isApproved = isApproved;
 
-       if (isApproved === 'false') {
+      if (isApproved === "false") {
         console.log("hello");
-        
+
         user.deletedAt = new Date(); // Soft delete
       } else {
         console.log("falsse");
-        
+
         user.deletedAt = null; // Restore
       }
 
       await user.save();
 
       res.json({
-        message: `User ${isApproved ? "approved" : "soft deleted"} successfully`,
+        message: `User ${
+          isApproved ? "approved" : "soft deleted"
+        } successfully`,
         user: {
           id: user._id,
           firstName: user.firstName,
@@ -150,9 +157,6 @@ router.post(
     body("description").trim().isLength({ min: 10 }),
     body("eventDate").isISO8601(),
     body("location").trim().isLength({ min: 3 }),
-    body("registrationRequired").optional().isBoolean(),
-    body("paymentRequired").optional().isBoolean(),
-    body("eventFee").optional().isNumeric(),
   ],
   async (req, res) => {
     try {
@@ -175,47 +179,26 @@ router.post(
   }
 );
 
-// Gallery management
-router.post(
-  "/gallery",
-  auth(["admin"]),
-  uploadSingle,
-  [
-    body("eventName").trim().isLength({ min: 3 }),
-    body("eventDate").isISO8601(),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
+router.post("/gallery",   upload.array("images", 50), async (req, res) => {
+  try {
+    const fileName = req.file?.filename;
 
-      const { eventName, eventDate } = req.body;
-
-      let gallery = await Gallery.findOne({ eventName, eventDate });
-
-      if (gallery) {
-        if (req.file) {
-          gallery.images.push({ url: req.file.path, caption: "" });
-          await gallery.save();
-        }
-      } else {
-        gallery = new Gallery({
-          eventName,
-          eventDate,
-          images: req.file ? [{ url: req.file.path, caption: "" }] : [],
-        });
-        await gallery.save();
-      }
-
-      res.json(gallery);
-    } catch (error) {
-      console.error("Gallery creation error:", error);
-      res.status(500).json({ error: "Server error" });
+    if (!fileName) {
+      return res.status(400).json({ error: "No image uploaded." });
     }
+
+    res.status(200).json({
+      message: "Image uploaded successfully",
+      file: {
+        name: fileName,
+        path: `/upload/gallery/${fileName}`,
+      },
+    });
+  } catch (error) {
+    console.error("Image upload error:", error);
+    res.status(500).json({ error: "Server error" });
   }
-);
+});
 
 // News management
 router.post(

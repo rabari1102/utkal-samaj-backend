@@ -1,7 +1,20 @@
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
-// Use memoryStorage to keep the file as a buffer in memory
-const storage = multer.memoryStorage();
+// Use disk storage
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, '../upload/gallery');
+    fs.mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, `file-${uniqueSuffix}${ext}`);
+  }
+});
 
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
@@ -11,6 +24,6 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ storage: storage, fileFilter: fileFilter });
+const upload = multer({ storage, fileFilter });
 
 module.exports = upload;

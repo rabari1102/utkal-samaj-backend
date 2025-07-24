@@ -3,11 +3,7 @@ const mongoose = require('mongoose');
 const gallerySchema = new mongoose.Schema({
   eventName: {
     type: String,
-    required: true
-  },
-  eventDate: {
-    type: Date,
-    required: true
+    required: false
   },
   images: [{
     url: String,

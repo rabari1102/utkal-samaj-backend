@@ -1,64 +1,31 @@
 const express = require('express');
-const Gallery = require('../models/Gallery');
-
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 
 // Get all gallery items
-router.get('/', async (req, res) => {
+router.get("/getAllGallery", async (req, res) => {
   try {
-    const galleries = await Gallery.find({ isActive: true })
-      .sort({ eventDate: -1 });
+    const galleryDir = path.join(__dirname, "../upload/gallery");
 
-    res.json(galleries);
-  } catch (error) {
-    console.error('Get gallery error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+    if (!fs.existsSync(galleryDir)) {
+      return res.status(404).json({ error: "Gallery folder not found." });
+    }
 
-// Get gallery by event
-router.get('/event/:eventName', async (req, res) => {
-  try {
-    const { eventName } = req.params;
+    const files = fs.readdirSync(galleryDir);
+    const imageFiles = files.filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file));
     
-    const galleries = await Gallery.find({ 
-      eventName: new RegExp(eventName, 'i'), 
-      isActive: true 
-    })
-    .sort({ eventDate: -1 });
-
-    res.json(galleries);
-  } catch (error) {
-    console.error('Get gallery by event error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Get random photos for slider
-router.get('/slider', async (req, res) => {
-  try {
-    const galleries = await Gallery.find({ isActive: true });
-    
-    // Extract all images from all galleries
-    const allImages = [];
-    galleries.forEach(gallery => {
-      gallery.images.forEach(image => {
-        allImages.push({
-          ...image,
-          eventName: gallery.eventName,
-          eventDate: gallery.eventDate
-        });
-      });
+    const images = imageFiles.map(file => {
+      return {
+        name: file,
+        url: `/images/gallery/${file}`,
+      };
     });
 
-    // Shuffle and return random 10 images
-    const shuffled = allImages.sort(() => 0.5 - Math.random());
-    const sliderImages = shuffled.slice(0, 10);
-
-    res.json(sliderImages);
+    res.status(200).json({ count: images.length, images });
   } catch (error) {
-    console.error('Get slider images error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error("Error reading gallery folder:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
