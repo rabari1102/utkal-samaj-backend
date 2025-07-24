@@ -1,11 +1,18 @@
 const express = require("express");
 const TeamNode = require("../models/Team");
-const upload = require("../utils/upload");
+const createUploader = require("../utils/upload"); // Import the factory
 const path = require("path");
 const router = express.Router();
 
-// Team management
-router.post("/", upload.single("profilePicture"), async (req, res) => {
+// Create a specific uploader for team profile pictures
+// Files will be saved in 'upload/team_profiles/'
+const teamUploader = createUploader("team_profiles");
+
+// Default profile picture path (client should resolve this)
+const DEFAULT_PROFILE_PIC_PATH = "/defaults/avatar.png";
+
+// POST a new team member
+router.post("/", teamUploader.single("profilePicture"), async (req, res) => {
   try {
     const { name, role, samiti, parent } = req.body;
 
@@ -14,7 +21,8 @@ router.post("/", upload.single("profilePicture"), async (req, res) => {
       role,
       samiti,
       parent: parent || null,
-      profilePicture: req.file ? req.file.buffer : null,
+      // **IMPORTANT**: Store the file PATH, not the buffer
+      profilePicture: req.file ? req.file.path : null,
     });
 
     await teamNode.save();
@@ -27,23 +35,21 @@ router.post("/", upload.single("profilePicture"), async (req, res) => {
   }
 });
 
+// GET the full team tree
 router.get("/tree", async (req, res) => {
   try {
-    const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22";
-    const DEFAULT_PROFILE_PIC = "your_default_image_url_or_buffer"; // Define your default picture
+    const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22"; // Use your actual root ID
 
-    // Recursive function to build tree
     const buildTree = async (id) => {
       const node = await TeamNode.findById(id).lean();
       if (!node) return null;
 
       if (!node.profilePicture) {
-        node.profilePicture = DEFAULT_PROFILE_PIC;
+        node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
       }
 
-      // Find all children and SORT them by name in ascending order
       const children = await TeamNode.find({ parent: id })
-        .sort({ createdAt: "ascending" }) // <-- This is the new line for sorting
+        .sort({ createdAt: "ascending" })
         .lean();
       
       node.children = await Promise.all(
@@ -53,16 +59,12 @@ router.get("/tree", async (req, res) => {
       return node;
     };
 
-    // Step 1: Find the root node
     const samitiNode = await TeamNode.findById(SAMITI_PARENT_ID).lean();
     if (!samitiNode) {
       return res.status(404).json({ message: "Samiti Parent ID not found" });
     }
 
-    // Step 2: Build the entire tree starting from the root
     const samitiTree = await buildTree(samitiNode._id);
-
-    // The result is a single tree object, so we wrap it in an array to match the original output structure
     res.json({ data: [samitiTree] });
 
   } catch (err) {
@@ -71,22 +73,19 @@ router.get("/tree", async (req, res) => {
   }
 });
 
+// GET a specific subtree by ID
 router.get("/tree/:id", async (req, res) => {
   const nodeId = req.params.id;
-
   try {
-    // Recursively fetch children tree
     const buildTree = async (id) => {
       const node = await TeamNode.findById(id).lean();
       if (!node) return null;
 
-      // Set default profile picture if missing
-      if (!node.profilePicture) node.profilePicture = DEFAULT_PROFILE_PIC;
+      if (!node.profilePicture) {
+        node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+      }
 
-      // Find children
       const children = await TeamNode.find({ parent: id }).lean();
-
-      // Recursively add children
       node.children = await Promise.all(
         children.map((child) => buildTree(child._id))
       );
@@ -95,18 +94,18 @@ router.get("/tree/:id", async (req, res) => {
     };
 
     const tree = await buildTree(nodeId);
-
     if (!tree) return res.status(404).json({ message: "Node not found" });
 
-    res.json({ data: trees });
+    // Corrected variable name from 'trees' to 'tree'
+    res.json({ data: tree });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// This route will now work correctly with the new multer config
-router.put("/:id", upload.single("profilePicture"), async (req, res) => {
+// UPDATE a team member
+router.put("/:id", teamUploader.single("profilePicture"), async (req, res) => {
   try {
     const { name, role, samiti, parent } = req.body;
     const updateData = {};
@@ -116,8 +115,9 @@ router.put("/:id", upload.single("profilePicture"), async (req, res) => {
     if (samiti) updateData.samiti = samiti;
     if (parent !== undefined) updateData.parent = parent;
 
+    // **IMPORTANT**: If a new file is uploaded, update its PATH
     if (req.file) {
-      updateData.profilePicture = req.file.buffer;
+      updateData.profilePicture = req.file.path;
     }
 
     const updatedNode = await TeamNode.findByIdAndUpdate(

@@ -5,32 +5,35 @@ const Content = require("../models/Content");
 const Event = require("../models/Event");
 const TeamNode = require("../models/Team");
 const Gallery = require("../models/Gallery");
-const upload = require("../utils/upload");
 const News = require("../models/news");
 const Achievement = require("../models/Achivments");
-const { uploadSingle } = require("../services/uploadService");
 const { auth } = require("../middlewares/auth");
+
+// Import the uploader factory function
+const createUploader = require("../utils/upload");
+
+// Create specific uploaders for each route/purpose
+const contentUploader = createUploader("content");
+const eventsUploader = createUploader("events");
+const galleryUploader = createUploader("gallery");
+const newsUploader = createUploader("news");
+const achievementsUploader = createUploader("achievements");
 
 const router = express.Router();
 
 // Get pending user approvals
 router.get("/pending-users", auth(["admin"]), async (req, res) => {
   try {
-    // Default values
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-
-    // Calculate skip value
     const skip = (page - 1) * limit;
 
-    // Query total count
     const total = await User.countDocuments({
       isApproved: false,
       isActive: true,
       deletedAt: null,
     });
 
-    // Fetch paginated users
     const pendingUsers = await User.find({
       isApproved: false,
       isActive: true,
@@ -108,11 +111,10 @@ router.put(
   }
 );
 
-// Content management
+// Content management - UPLOADS to 'upload/content/'
 router.put(
   "/content/:section",
-  auth(["admin"]),
-  uploadSingle,
+  contentUploader.single("image"), // Use contentUploader
   [
     body("title").optional().isString(),
     body("content").isString(),
@@ -131,7 +133,7 @@ router.put(
       let updateData = { content };
       if (title) updateData.title = title;
       if (link) updateData.link = link;
-      if (req.file) updateData.image = req.file.path;
+      if (req.file) updateData.image = req.file.path; // req.file is from .single()
 
       const updatedContent = await Content.findOneAndUpdate(
         { section },
@@ -147,11 +149,10 @@ router.put(
   }
 );
 
-// Event management
+// Event management - UPLOADS to 'upload/events/'
 router.post(
   "/events",
-  auth(["admin"]),
-  uploadSingle,
+  eventsUploader.array("images", 50),
   [
     body("title").trim().isLength({ min: 3 }),
     body("description").trim().isLength({ min: 10 }),
@@ -160,17 +161,17 @@ router.post(
   ],
   async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
+      const { title, description, eventDate, location } = req.body;
+      const imagePaths = req.files?.map((file) => file.path) || [];
 
-      const eventData = { ...req.body };
-      if (req.file) eventData.image = req.file.path;
-
-      const event = new Event(eventData);
+      const event = new Event({
+        title,
+        description,
+        eventDate,
+        location,
+        images: imagePaths,
+      });
       await event.save();
-
       res.status(201).json(event);
     } catch (error) {
       console.error("Event creation error:", error);
@@ -179,32 +180,38 @@ router.post(
   }
 );
 
-router.post("/gallery",   upload.array("images", 50), async (req, res) => {
+// Gallery management - UPLOADS to 'upload/gallery/'
+router.post("/gallery",  galleryUploader.array("images", 50), async (req, res) => {
   try {
-    const fileName = req.file?.filename;
-
-    if (!fileName) {
-      return res.status(400).json({ error: "No image uploaded." });
+    // For .array(), we check req.files, not req.file
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "No images were uploaded." });
     }
 
+    // Map the uploaded files to their paths for the response
+    const uploadedFiles = req.files.map(file => ({
+        name: file.filename,
+        path: file.path,
+    }));
+
+    // You might want to save these paths to your Gallery model here
+    // For example: await Gallery.insertMany(uploadedFiles.map(f => ({ path: f.path, ...otherData })));
+
     res.status(200).json({
-      message: "Image uploaded successfully",
-      file: {
-        name: fileName,
-        path: `/upload/gallery/${fileName}`,
-      },
+      message: "Images uploaded successfully to the gallery",
+      files: uploadedFiles,
     });
   } catch (error) {
-    console.error("Image upload error:", error);
+    console.error("Gallery image upload error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// News management
+
+// News management - UPLOADS to 'upload/news/'
 router.post(
   "/news",
-  auth(["admin"]),
-  uploadSingle,
+  newsUploader.single("image"), // Use newsUploader
   [
     body("title").trim().isLength({ min: 3 }),
     body("content").trim().isLength({ min: 10 }),
@@ -219,11 +226,10 @@ router.post(
       }
 
       const newsData = { ...req.body };
-      if (req.file) newsData.image = req.file.path;
+      if (req.file) newsData.image = req.file.path; // req.file from .single()
 
       const news = new News(newsData);
       await news.save();
-
       res.status(201).json(news);
     } catch (error) {
       console.error("News creation error:", error);
@@ -232,18 +238,15 @@ router.post(
   }
 );
 
-// Achievement management
+// Achievement management - UPLOADS to 'upload/achievements/'
 router.post(
   "/achievements",
-  auth(["admin"]),
-  uploadSingle,
+  achievementsUploader.single("image"), // Use achievementsUploader
   [
     body("title").trim().isLength({ min: 3 }),
     body("description").trim().isLength({ min: 10 }),
     body("achievementDate").isISO8601(),
-    body("category")
-      .optional()
-      .isIn(["award", "recognition", "milestone", "other"]),
+    body("category").optional().isIn(["award", "recognition", "milestone", "other"]),
   ],
   async (req, res) => {
     try {
@@ -253,11 +256,10 @@ router.post(
       }
 
       const achievementData = { ...req.body };
-      if (req.file) achievementData.image = req.file.path;
+      if (req.file) achievementData.image = req.file.path; // req.file from .single()
 
       const achievement = new Achievement(achievementData);
       await achievement.save();
-
       res.status(201).json(achievement);
     } catch (error) {
       console.error("Achievement creation error:", error);

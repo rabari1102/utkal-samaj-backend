@@ -7,20 +7,17 @@ const { createPaymentOrder } = require('../services/paymentService');
 const router = express.Router();
 
 // Get all upcoming events
-router.get('/upcoming', async (req, res) => {
+router.get("/getAllEvents", async (req, res) => {
   try {
-    const events = await Event.find({ 
-      eventDate: { $gte: new Date() },
-      isActive: true 
-    })
-    .sort({ eventDate: 1 });
+    const events = await Event.find().sort({ eventDate: -1 });
 
-    res.json(events);
+    res.status(200).json(events);
   } catch (error) {
-    console.error('Get upcoming events error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error("Error fetching events:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // Get all past events
 router.get('/past', async (req, res) => {
@@ -39,18 +36,21 @@ router.get('/past', async (req, res) => {
 });
 
 // Get event by ID
-router.get('/:id', async (req, res) => {
+
+router.get("/getEventById/:id", async (req, res) => {
+  const { id } = req.params;
+
   try {
-    const event = await Event.findById(req.params.id);
-    
-    if (!event || !event.isActive) {
-      return res.status(404).json({ error: 'Event not found' });
+    const event = await Event.findById(id);
+
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" });
     }
 
-    res.json(event);
+    res.status(200).json(event);
   } catch (error) {
-    console.error('Get event error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error("Error fetching event by ID:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
