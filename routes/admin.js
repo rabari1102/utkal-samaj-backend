@@ -180,6 +180,48 @@ router.post(
   }
 );
 
+router.put(
+  "/eventUpdate/:id",
+  eventsUploader.array("images", 50),
+  [
+    body("title").optional().trim().isLength({ min: 3 }),
+    body("description").optional().trim().isLength({ min: 10 }),
+    body("eventDate").optional().isISO8601(),
+    body("location").optional().trim().isLength({ min: 3 }),
+  ],
+  async (req, res) => {
+    try {
+      const eventId = req.params.id;
+      const updates = req.body;
+      const newImages = req.files?.map((file) => file.path) || [];
+
+      // Find the existing event
+      const event = await Event.findById(eventId);
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      // Update fields if provided
+      if (updates.title) event.title = updates.title;
+      if (updates.description) event.description = updates.description;
+      if (updates.eventDate) event.eventDate = updates.eventDate;
+      if (updates.location) event.location = updates.location;
+
+      // Optionally append new images (you can change this to overwrite if needed)
+      if (newImages.length > 0) {
+        event.images = [...event.images, ...newImages];
+      }
+
+      await event.save();
+      res.status(200).json(event);
+    } catch (error) {
+      console.error("Event update error:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  }
+);
+
+
 // Gallery management - UPLOADS to 'upload/gallery/'
 router.post("/gallery",  galleryUploader.array("images", 50), async (req, res) => {
   try {
