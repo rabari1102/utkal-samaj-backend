@@ -254,32 +254,37 @@ router.put(
 );
 
 
-// Gallery management - UPLOADS to 'upload/gallery/'
-router.post("/gallery",  galleryUploader.array("images", 50), async (req, res) => {
+router.post("/gallery", galleryUploader.array("images", 50), async (req, res) => {
   try {
-    // For .array(), we check req.files, not req.file
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: "No images were uploaded." });
+      return res.status(400).json({ success: false, error: "No images were uploaded." });
     }
 
-    // Map the uploaded files to their paths for the response
-    const uploadedFiles = req.files.map(file => ({
-        name: file.filename,
-        path: file.path,
-    }));
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
-    // You might want to save these paths to your Gallery model here
-    // For example: await Gallery.insertMany(uploadedFiles.map(f => ({ path: f.path, ...otherData })));
+    const uploadedFiles = req.files.map(file => {
+      const normalizedPath = file.path.replace(/\\/g, "/"); // Normalize slashes
+      const relativePath = path.relative(path.join(__dirname, "..", "upload"), normalizedPath);
+      return {
+        name: file.filename,
+        path: normalizedPath,
+        url: `${baseUrl}/uploads/${relativePath}`,
+      };
+    });
 
     res.status(200).json({
+      success: true,
       message: "Images uploaded successfully to the gallery",
       files: uploadedFiles,
     });
   } catch (error) {
     console.error("Gallery image upload error:", error);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
+
+module.exports = router;
+
 
 
 // News management - UPLOADS to 'upload/news/'
