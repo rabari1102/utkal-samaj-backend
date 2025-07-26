@@ -3,6 +3,7 @@ const { body, validationResult } = require("express-validator");
 const User = require("../models/User");
 const Content = require("../models/Content");
 const Event = require("../models/Event");
+const path = require("path");
 const TeamNode = require("../models/Team");
 const Gallery = require("../models/Gallery");
 const News = require("../models/news");
@@ -154,28 +155,59 @@ router.post(
   "/events",
   eventsUploader.array("images", 50),
   [
-    body("title").trim().isLength({ min: 3 }),
-    body("description").trim().isLength({ min: 10 }),
-    body("eventDate").isISO8601(),
-    body("location").trim().isLength({ min: 3 }),
+    body("title").trim().isLength({ min: 3 }).withMessage("Title is too short"),
+    body("description").trim().isLength({ min: 10 }).withMessage("Description is too short"),
+    body("eventDate").isISO8601().withMessage("Invalid event date"),
+    body("location").trim().isLength({ min: 3 }).withMessage("Location is too short"),
   ],
   async (req, res) => {
     try {
-      const { title, description, eventDate, location } = req.body;
-      const imagePaths = req.files?.map((file) => file.path) || [];
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
+      const { title, description, eventDate, location } = req.body;
+
+      // Prepare relative image paths
+      const relativeImagePaths = (req.files || []).map(file => {
+        return path
+          .relative(path.join(__dirname, "..", "upload"), file.path)
+          .replace(/\\/g, "/"); // Ensure forward slashes
+      });
+
+      // Save to MongoDB
       const event = new Event({
         title,
         description,
         eventDate,
         location,
-        images: imagePaths,
+        images: relativeImagePaths
       });
+
       await event.save();
-      res.status(201).json(event);
+
+      // Construct full image URLs
+      const imageUrls = relativeImagePaths.map(
+        p => `https://utkal-samaj-backend-production.up.railway.app/uploads/${p}`
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Event created successfully",
+        data: {
+          id: event._id,
+          title: event.title,
+          description: event.description,
+          eventDate: event.eventDate,
+          location: event.location,
+          images: imageUrls
+        }
+      });
+
     } catch (error) {
       console.error("Event creation error:", error);
-      res.status(500).json({ error: "Server error" });
+      res.status(500).json({ error: "Internal server error" });
     }
   }
 );

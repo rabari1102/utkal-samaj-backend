@@ -6,123 +6,169 @@ const { createPaymentOrder } = require('../services/paymentService');
 
 const router = express.Router();
 
-// Get all upcoming events
-router.get("/getAllEvents", async (req, res) => {
+/**
+ * Utility to generate full image URLs for an event
+ */
+const generateImageUrls = (req, images) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  return (images || []).map(imgPath =>
+    `${baseUrl}/uploads/${imgPath.replace(/\\/g, '/')}`
+  );
+};
+
+/**
+ * @route GET /getAllEvents
+ * @desc Get all events (latest first)
+ */
+router.get('/getAllEvents', async (req, res) => {
   try {
     const events = await Event.find().sort({ eventDate: -1 });
 
-    res.status(200).json(events);
+    const updatedEvents = events.map(event => ({
+      ...event._doc,
+      imageUrls: generateImageUrls(req, event.images),
+    }));
+
+    res.status(200).json({ success: true, data: updatedEvents });
   } catch (error) {
-    console.error("Error fetching events:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error('Error fetching events:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-
-// Get all past events
+/**
+ * @route GET /past
+ * @desc Get all past events (already occurred)
+ */
 router.get('/past', async (req, res) => {
   try {
-    const events = await Event.find({ 
+    const events = await Event.find({
       eventDate: { $lt: new Date() },
-      isActive: true 
-    })
-    .sort({ eventDate: -1 });
+      isActive: true,
+    }).sort({ eventDate: -1 });
 
-    res.json(events);
+    const updatedEvents = events.map(event => ({
+      ...event._doc,
+      imageUrls: generateImageUrls(req, event.images),
+    }));
+
+    res.status(200).json({ success: true, data: updatedEvents });
   } catch (error) {
     console.error('Get past events error:', error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Get event by ID
-
-router.get("/getEventById/:id", async (req, res) => {
+/**
+ * @route GET /getEventById/:id
+ * @desc Get single event by ID
+ */
+router.get('/getEventById/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
     const event = await Event.findById(id);
-
     if (!event) {
-      return res.status(404).json({ error: "Event not found" });
+      return res.status(404).json({ success: false, error: 'Event not found' });
     }
 
-    res.status(200).json(event);
+    const eventData = {
+      ...event._doc,
+      imageUrls: generateImageUrls(req, event.images),
+    };
+
+    res.status(200).json({ success: true, data: eventData });
   } catch (error) {
-    console.error("Error fetching event by ID:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error('Error fetching event by ID:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Register for event
-router.post('/:id/register', [
-  body('participantName').trim().isLength({ min: 2 }),
-  body('phoneNumber').isMobilePhone(),
-  body('email').optional().isEmail(),
-  body('numberOfParticipants').isInt({ min: 1, max: 10 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+/**
+ * @route POST /:id/register
+ * @desc Register user for an event
+ */
+router.post(
+  '/:id/register',
+  [
+    body('participantName').trim().isLength({ min: 2 }).withMessage('Name required'),
+    body('phoneNumber').isMobilePhone().withMessage('Invalid phone'),
+    body('email').optional().isEmail().withMessage('Invalid email'),
+    body('numberOfParticipants')
+      .isInt({ min: 1, max: 10 })
+      .withMessage('1–10 participants allowed'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+      }
 
-    const { id } = req.params;
-    const { participantName, phoneNumber, email, numberOfParticipants } = req.body;
+      const { id } = req.params;
+      const { participantName, phoneNumber, email, numberOfParticipants } = req.body;
 
-    const event = await Event.findById(id);
-    if (!event || !event.isActive) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
+      const event = await Event.findById(id);
+      if (!event || !event.isActive) {
+        return res.status(404).json({ success: false, error: 'Event not found' });
+      }
 
-    if (event.eventDate < new Date()) {
-      return res.status(400).json({ error: 'Event registration has ended' });
-    }
+      if (new Date(event.eventDate) < new Date()) {
+        return res.status(400).json({ success: false, error: 'Event registration has ended' });
+      }
 
-    if (event.maxParticipants && 
-        event.registeredCount + numberOfParticipants > event.maxParticipants) {
-      return res.status(400).json({ error: 'Event is full' });
-    }
+      if (
+        event.maxParticipants &&
+        event.registeredCount + numberOfParticipants > event.maxParticipants
+      ) {
+        return res.status(400).json({ success: false, error: 'Event is full' });
+      }
 
-    const registration = new EventRegistration({
-      eventId: id,
-      participantName,
-      phoneNumber,
-      email,
-      numberOfParticipants
-    });
-
-    if (event.paymentRequired && event.eventFee > 0) {
-      const totalAmount = event.eventFee * numberOfParticipants;
-      const paymentOrder = await createPaymentOrder(totalAmount, `Event Registration - ${event.title}`);
-      
-      registration.paymentId = paymentOrder.id;
-      registration.paymentStatus = 'pending';
-      
-      await registration.save();
-      
-      res.json({
-        message: 'Registration created. Please complete payment.',
-        registrationId: registration._id,
-        paymentOrder
+      const registration = new EventRegistration({
+        eventId: id,
+        participantName,
+        phoneNumber,
+        email,
+        numberOfParticipants,
       });
-    } else {
-      registration.paymentStatus = 'completed';
-      await registration.save();
-      
-      // Update event registered count
-      event.registeredCount += numberOfParticipants;
-      await event.save();
-      
-      res.json({
-        message: 'Registration successful',
-        registrationId: registration._id
-      });
+
+      if (event.paymentRequired && event.eventFee > 0) {
+        const totalAmount = event.eventFee * numberOfParticipants;
+
+        const paymentOrder = await createPaymentOrder(
+          totalAmount,
+          `Event Registration - ${event.title}`
+        );
+
+        registration.paymentId = paymentOrder.id;
+        registration.paymentStatus = 'pending';
+
+        await registration.save();
+
+        return res.status(201).json({
+          success: true,
+          message: 'Registration created. Please complete payment.',
+          registrationId: registration._id,
+          paymentOrder,
+        });
+      } else {
+        registration.paymentStatus = 'completed';
+        await registration.save();
+
+        event.registeredCount += numberOfParticipants;
+        await event.save();
+
+        return res.status(201).json({
+          success: true,
+          message: 'Registration successful',
+          registrationId: registration._id,
+        });
+      }
+    } catch (error) {
+      console.error('Event registration error:', error);
+      res.status(500).json({ success: false, error: 'Server error' });
     }
-  } catch (error) {
-    console.error('Event registration error:', error);
-    res.status(500).json({ error: 'Server error' });
   }
-});
+);
 
 module.exports = router;

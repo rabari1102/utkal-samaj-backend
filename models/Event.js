@@ -1,15 +1,13 @@
 const mongoose = require("mongoose");
 
-const EventSchema = new mongoose.Schema({
+const eventSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: String,
   eventDate: Date,
   location: String,
-  images: [String],
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+  images: [String], // array of relative paths
+}, {
+  timestamps: true
 });
 
-module.exports = mongoose.model("Event", EventSchema);
+module.exports = mongoose.model("Event", eventSchema);
