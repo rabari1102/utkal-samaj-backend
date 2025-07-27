@@ -23,10 +23,9 @@ app.use(helmet());
 
 // CORS Configuration
 const corsOptions = {
-  origin: '*', // For production, replace '*' with your frontend domain like 'https://your-site.com'
+  origin: '*',
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
 };
 
 app.use(cors(corsOptions));
