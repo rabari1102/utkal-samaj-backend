@@ -7,7 +7,7 @@ const cron = require('node-cron');
 const compression = require('compression');
 const path = require('path');
 require('dotenv').config();
-
+const serveIndex = require('serve-index');
 // Security and Sanitization Packages
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
@@ -51,13 +51,14 @@ app.use('/api', limiter);
 
 // 👇 Add CORS headers for static files in /uploads
 app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*'); // Replace '*' with your frontend origin for production
+  res.header('Access-Control-Allow-Origin', '*'); // or your frontend origin in prod
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
 });
 
 // Static File Serving
 app.use('/uploads', express.static(path.join(__dirname, 'upload')));
+app.use('/uploads', serveIndex(path.join(__dirname, 'upload')));
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
