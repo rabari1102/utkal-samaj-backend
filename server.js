@@ -18,9 +18,23 @@ const { sendDonationReminders } = require('./services/cronService');
 const app = express();
 app.set('trust proxy', 'loopback');
 app.use(helmet());
+// CORS Configuration
+const corsOptions = {
+  origin: '*', // Allows all domains. ⚠️ For production, replace '*' with your frontend's domain.
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Specifies the methods allowed for cross-origin requests
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization' // Add 'Authorization' to the list of allowed headers
+    // Add any other custom headers your frontend might send
+  ],
+  credentials: true // Allows cookies to be sent
+};
 
-// ADD THIS
-app.use(cors());
+// Enable CORS with the specified options
+app.use(cors(corsOptions));
+
+// Handle preflight requests across all routes
+app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
