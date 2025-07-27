@@ -50,15 +50,16 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // 👇 Add CORS headers for static files in /uploads
-app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*'); // or your frontend origin in prod
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  next();
-});
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'upload'), {
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    },
+  })
+);
 
-// Static File Serving
-app.use('/uploads', express.static(path.join(__dirname, 'upload')));
-app.use('/uploads', serveIndex(path.join(__dirname, 'upload')));
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
