@@ -51,13 +51,18 @@ app.use('/api', limiter);
 
 // 👇 Add CORS headers for static files in /uploads
 app.use(
-  '/uploads',
-  express.static(path.join(__dirname, 'upload'), {
+  "/uploads",
+  express.static(path.join(__dirname, "upload"), {
     setHeaders: (res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Origin, X-Requested-With, Content-Type, Accept"
+      );
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); // 👈 This is the key
     },
-  })
+      })
 );
 
 
