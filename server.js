@@ -8,33 +8,52 @@ const compression = require('compression');
 const path = require('path');
 require('dotenv').config();
 
+// Security and Sanitization Packages
+const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
+
 const connectDB = require('./config/database');
 const { sendDonationReminders } = require('./services/cronService');
 
 const app = express();
-
-// Trust proxy for platforms like Railway
 app.set('trust proxy', 'loopback');
-
-// Middleware: Security, Compression, CORS, Body parsers
 app.use(helmet());
-app.use(cors());
-app.use(compression());
+
+// CORS Configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [];
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(compression());
 
-// Rate limiting
+app.use(mongoSanitize());
+
+app.use(xss());
+// Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests, please try again later.',
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: 'Too many requests from this IP, please try again after 15 minutes.',
 });
-app.use(limiter);
+app.use('/api', limiter); // Apply to all API routes
 
-// Serve static uploads (for images, documents, etc.)
 app.use('/uploads', express.static(path.join(__dirname, 'upload')));
 
-// Routes
+// API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/user', require('./routes/user'));
@@ -45,41 +64,50 @@ app.use('/api/team', require('./routes/team'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/news', require('./routes/news'));
 
-// Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Root
 app.get('/', (req, res) => {
   res.send('✅ Backend is running!');
 });
 
-// 404 Handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// 404 Handler for all other routes
+app.all('*', (req, res, next) => {
+  // Replace with a more sophisticated AppError class if you have one
+  const err = new Error(`Can't find ${req.originalUrl} on this server!`);
+  err.status = 404;
+  next(err);
 });
 
-// Error Handling
+// Replaces your previous basic error handler
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled Error:', err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+    console.error('❌ UNHANDLED ERROR:', err);
+    const statusCode = err.status || 500;
+    const message = err.message || 'Something went very wrong!';
+    res.status(statusCode).json({
+        status: 'error',
+        message: message,
+        // Optionally include stack in development
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    });
 });
 
-// Cron Jobs
 cron.schedule('0 9 * * *', () => {
   console.log('⏰ Running daily donation reminder check...');
   sendDonationReminders();
+}, {
+  timezone: "Asia/Kolkata" // Best practice to set a timezone
 });
 
-// Start Server
+const PORT = process.env.PORT || 3000;
 connectDB()
   .then(() => {
-    const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('❌ MongoDB connection failed:', err);
+    console.error('❌ MongoDB connection failed. Server is not running.', err);
+    process.exit(1); // Exit process with failure
   });
