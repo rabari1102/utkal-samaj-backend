@@ -17,42 +17,47 @@ const { sendDonationReminders } = require('./services/cronService');
 
 const app = express();
 app.set('trust proxy', 'loopback');
+
+// Security Headers
 app.use(helmet());
+
 // CORS Configuration
 const corsOptions = {
-  origin: '*', // Allows all domains. ⚠️ For production, replace '*' with your frontend's domain.
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Specifies the methods allowed for cross-origin requests
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization' // Add 'Authorization' to the list of allowed headers
-    // Add any other custom headers your frontend might send
-  ],
-  credentials: true // Allows cookies to be sent
+  origin: '*', // For production, replace '*' with your frontend domain like 'https://your-site.com'
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 };
 
-// Enable CORS with the specified options
 app.use(cors(corsOptions));
-
-// Handle preflight requests across all routes
 app.options('*', cors(corsOptions));
 
+// Request Body Limit
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 app.use(compression());
-
 app.use(mongoSanitize());
-
 app.use(xss());
+
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: 'Too many requests from this IP, please try again after 15 minutes.',
 });
-app.use('/api', limiter); // Apply to all API routes
+app.use('/api', limiter);
 
+// 👇 Add CORS headers for static files in /uploads
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*'); // Replace '*' with your frontend origin for production
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
+// Static File Serving
 app.use('/uploads', express.static(path.join(__dirname, 'upload')));
 
 // API Routes
@@ -66,6 +71,7 @@ app.use('/api/team', require('./routes/team'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/news', require('./routes/news'));
 
+// Health Check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
@@ -74,34 +80,36 @@ app.get('/', (req, res) => {
   res.send('✅ Backend is running!');
 });
 
-// 404 Handler for all other routes
+// 404 Fallback
 app.all('*', (req, res, next) => {
-  // Replace with a more sophisticated AppError class if you have one
   const err = new Error(`Can't find ${req.originalUrl} on this server!`);
   err.status = 404;
   next(err);
 });
 
-// Replaces your previous basic error handler
+// Global Error Handler
 app.use((err, req, res, next) => {
-    console.error('❌ UNHANDLED ERROR:', err);
-    const statusCode = err.status || 500;
-    const message = err.message || 'Something went very wrong!';
-    res.status(statusCode).json({
-        status: 'error',
-        message: message,
-        // Optionally include stack in development
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-    });
+  console.error('❌ UNHANDLED ERROR:', err);
+  const statusCode = err.status || 500;
+  const message = err.message || 'Something went very wrong!';
+  res.status(statusCode).json({
+    status: 'error',
+    message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  });
 });
 
-cron.schedule('0 9 * * *', () => {
-  console.log('⏰ Running daily donation reminder check...');
-  sendDonationReminders();
-}, {
-  timezone: "Asia/Kolkata" // Best practice to set a timezone
-});
+// Cron Job
+cron.schedule(
+  '0 9 * * *',
+  () => {
+    console.log('⏰ Running daily donation reminder check...');
+    sendDonationReminders();
+  },
+  { timezone: 'Asia/Kolkata' }
+);
 
+// Server Boot
 const PORT = process.env.PORT || 3000;
 connectDB()
   .then(() => {
@@ -111,5 +119,5 @@ connectDB()
   })
   .catch((err) => {
     console.error('❌ MongoDB connection failed. Server is not running.', err);
-    process.exit(1); // Exit process with failure
+    process.exit(1);
   });
