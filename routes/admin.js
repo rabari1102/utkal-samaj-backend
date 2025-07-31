@@ -149,7 +149,7 @@ router.put(
   }
 );
 
-// Event management - UPLOADS to 'upload/events/'
+// CREATE EVENT API - Minor fixes
 router.post(
   "/events",
   eventsUploader.array("images", 50),
@@ -168,11 +168,13 @@ router.post(
 
       const { title, description, eventDate, location } = req.body;
 
-      // Prepare relative image paths
+      // Prepare relative image paths (more robust handling)
       const relativeImagePaths = (req.files || []).map(file => {
-        return path
+        // Get relative path from upload directory
+        const relativePath = path
           .relative(path.join(__dirname, "..", "upload"), file.path)
-          .replace(/\\/g, "/"); // Ensure forward slashes
+          .replace(/\\/g, "/"); // Ensure forward slashes for consistency
+        return relativePath;
       });
 
       // Save to MongoDB
@@ -186,9 +188,10 @@ router.post(
 
       await event.save();
 
-      // Construct full image URLs
+      // Construct full image URLs for response
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
       const imageUrls = relativeImagePaths.map(
-        p => `https://utkal-samaj-backend-production.up.railway.app/upload/${p}`
+        p => `${baseUrl}/upload/${p}`
       );
 
       res.status(201).json({
@@ -206,52 +209,114 @@ router.post(
 
     } catch (error) {
       console.error("Event creation error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ 
+        success: false,
+        error: "Internal server error",
+        message: error.message 
+      });
     }
   }
 );
 
+// FIXED UPDATE EVENT API
 router.put(
   "/eventUpdate/:id",
   eventsUploader.array("images", 50),
   [
-    body("title").optional().trim().isLength({ min: 3 }),
-    body("description").optional().trim().isLength({ min: 10 }),
-    body("eventDate").optional().isISO8601(),
-    body("location").optional().trim().isLength({ min: 3 }),
+    body("title").optional().trim().isLength({ min: 3 }).withMessage("Title is too short"),
+    body("description").optional().trim().isLength({ min: 10 }).withMessage("Description is too short"),
+    body("eventDate").optional().isISO8601().withMessage("Invalid event date"),
+    body("location").optional().trim().isLength({ min: 3 }).withMessage("Location is too short"),
   ],
   async (req, res) => {
     try {
+      // Validate request
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
       const eventId = req.params.id;
       const updates = req.body;
-      const newImages = req.files?.map((file) => file.path) || [];
+
+      // Validate ObjectId
+      if (!eventId.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({ 
+          success: false,
+          error: "Invalid event ID format" 
+        });
+      }
 
       // Find the existing event
       const event = await Event.findById(eventId);
       if (!event) {
-        return res.status(404).json({ error: "Event not found" });
+        return res.status(404).json({ 
+          success: false,
+          error: "Event not found" 
+        });
       }
 
       // Update fields if provided
-      if (updates.title) event.title = updates.title;
-      if (updates.description) event.description = updates.description;
-      if (updates.eventDate) event.eventDate = updates.eventDate;
-      if (updates.location) event.location = updates.location;
+      if (updates.title !== undefined) event.title = updates.title;
+      if (updates.description !== undefined) event.description = updates.description;
+      if (updates.eventDate !== undefined) event.eventDate = updates.eventDate;
+      if (updates.location !== undefined) event.location = updates.location;
 
-      // Optionally append new images (you can change this to overwrite if needed)
-      if (newImages.length > 0) {
-        event.images = [...event.images, ...newImages];
+      // Handle new images
+      if (req.files && req.files.length > 0) {
+        // Process new images to relative paths (same as CREATE)
+        const newRelativeImagePaths = req.files.map(file => {
+          return path
+            .relative(path.join(__dirname, "..", "upload"), file.path)
+            .replace(/\\/g, "/");
+        });
+
+        // You can choose behavior:
+        // Option 1: Replace all images
+        // event.images = newRelativeImagePaths;
+        
+        // Option 2: Append new images (current behavior)
+        event.images = [...event.images, ...newRelativeImagePaths];
+        
+        // Option 3: Let frontend specify (recommended)
+        // if (updates.replaceImages === 'true') {
+        //   event.images = newRelativeImagePaths;
+        // } else {
+        //   event.images = [...event.images, ...newRelativeImagePaths];
+        // }
       }
 
       await event.save();
-      res.status(200).json(event);
+
+      // Return response with full URLs (consistent with CREATE)
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const imageUrls = event.images.map(
+        p => `${baseUrl}/upload/${p}`
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Event updated successfully",
+        data: {
+          id: event._id,
+          title: event.title,
+          description: event.description,
+          eventDate: event.eventDate,
+          location: event.location,
+          images: imageUrls
+        }
+      });
+
     } catch (error) {
       console.error("Event update error:", error);
-      res.status(500).json({ error: "Server error" });
+      res.status(500).json({ 
+        success: false,
+        error: "Server error",
+        message: error.message 
+      });
     }
   }
 );
-
 
 router.post("/gallery", galleryUploader.array("images", 50), async (req, res) => {
   try {
