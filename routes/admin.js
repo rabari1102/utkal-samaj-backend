@@ -23,7 +23,7 @@ const achievementsUploader = createUploader("achievements");
 const router = express.Router();
 
 // Get pending user approvals
-router.get("/pending-users", auth(["admin"]), async (req, res) => {
+router.get("/pending-users", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -61,7 +61,6 @@ router.get("/pending-users", auth(["admin"]), async (req, res) => {
 // Approve/reject user
 router.put(
   "/users/:id/approval",
-  auth(["admin"]),
   [body("isApproved").isBoolean()],
   async (req, res) => {
     try {
