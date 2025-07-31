@@ -271,4 +271,47 @@ router.get("/bloodGroup-list", async (req, res) => {
   }
 });
 
+// Delete single donor by ID
+router.delete("/donor/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid donor ID format" 
+      });
+    }
+
+    const deletedDonor = await bloodDonation.findByIdAndDelete(id);
+
+    if (!deletedDonor) {
+      return res.status(404).json({
+        success: false,
+        message: "Donor not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Donor deleted successfully",
+      deletedDonor: {
+        id: deletedDonor._id,
+        firstName: deletedDonor.firstName,
+        lastName: deletedDonor.lastName,
+        bloodGroup: deletedDonor.bloodGroup
+      }
+    });
+
+  } catch (error) {
+    console.error("Delete donor error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error while deleting donor",
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

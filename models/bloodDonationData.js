@@ -13,12 +13,12 @@ const addressSchema = new mongoose.Schema(
 const bloodDonation = new mongoose.Schema({
   firstName: {
     type: String,
-    required: [true, "First name is required."],
+    required: [false, "First name is required."],
     trim: true,
   },
   lastName: {
     type: String,
-    required: [true, "Last name is required."],
+    required: [false, "Last name is required."],
     trim: true,
   },
   fathersName: {
