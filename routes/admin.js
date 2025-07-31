@@ -282,10 +282,6 @@ router.post("/gallery", galleryUploader.array("images", 50), async (req, res) =>
   }
 });
 
-module.exports = router;
-
-
-
 // News management - UPLOADS to 'upload/news/'
 router.post(
   "/news",
