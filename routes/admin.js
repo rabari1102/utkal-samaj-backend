@@ -270,29 +270,15 @@ router.put(
             .relative(path.join(__dirname, "..", "upload"), file.path)
             .replace(/\\/g, "/");
         });
-
-        // You can choose behavior:
-        // Option 1: Replace all images
-        // event.images = newRelativeImagePaths;
-        
-        // Option 2: Append new images (current behavior)
         event.images = [...event.images, ...newRelativeImagePaths];
-        
-        // Option 3: Let frontend specify (recommended)
-        // if (updates.replaceImages === 'true') {
-        //   event.images = newRelativeImagePaths;
-        // } else {
-        //   event.images = [...event.images, ...newRelativeImagePaths];
-        // }
       }
 
       await event.save();
-
-      // Return response with full URLs (consistent with CREATE)
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const imageUrls = event.images.map(
         p => `${baseUrl}/upload/${p}`
       );
+console.log(imageUrls,"imageUrlsimageUrls");
 
       res.status(200).json({
         success: true,
