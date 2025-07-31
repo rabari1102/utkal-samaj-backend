@@ -188,7 +188,7 @@ router.post(
 
       // Construct full image URLs
       const imageUrls = relativeImagePaths.map(
-        p => `https://utkal-samaj-backend-production.up.railway.app/uploads/${p}`
+        p => `https://utkal-samaj-backend-production.up.railway.app/upload/${p}`
       );
 
       res.status(201).json({
