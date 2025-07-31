@@ -59,6 +59,7 @@ router.get("/tree", async (req, res) => {
           } else if (typeof filePath !== 'string') {
             console.warn('Profile picture is not a string or Binary:', typeof filePath, filePath);
             node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+            return node;
           } else {
             // Check if it's base64 encoded string
             if (!filePath.startsWith('/') && !filePath.startsWith('http') && !filePath.includes('\\') && !filePath.includes('/')) {
@@ -69,14 +70,30 @@ router.get("/tree", async (req, res) => {
               } catch (decodeError) {
                 console.warn('Failed to decode base64 profile picture:', decodeError);
                 node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+                return node;
               }
             }
           }
           
           // Only proceed if we have a valid filePath string
           if (filePath && typeof filePath === 'string') {
-            // Extract filename from the full path
-            const filename = path.basename(filePath);
+            // Extract filename from the full path - handle both Windows and Unix paths
+            let filename;
+            
+            // Handle Windows paths (backslashes)
+            if (filePath.includes('\\')) {
+              filename = filePath.split('\\').pop();
+            }
+            // Handle Unix paths (forward slashes)
+            else if (filePath.includes('/')) {
+              filename = filePath.split('/').pop();
+            }
+            // If no path separators, assume it's already a filename
+            else {
+              filename = filePath;
+            }
+            
+            console.log('Extracted filename:', filename);
             
             // Create proper accessible URL
             node.profilePicture = `${req.protocol}://${req.get('host')}/uploads/team_profiles/${filename}`;
