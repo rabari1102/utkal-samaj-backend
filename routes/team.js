@@ -40,12 +40,54 @@ router.get("/tree", async (req, res) => {
   try {
     const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22"; // Use your actual root ID
 
-    const buildTree = async (id) => {
+    const buildTree = async (id, req) => {
       const node = await TeamNode.findById(id).lean();
       if (!node) return null;
 
+      // Handle profile picture URL formatting
       if (!node.profilePicture) {
         node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+      } else {
+        try {
+          let filePath = node.profilePicture;
+          
+          // Handle MongoDB Binary object
+          if (filePath && typeof filePath === 'object' && filePath.buffer) {
+            // Convert MongoDB Binary to string
+            filePath = filePath.buffer.toString('utf-8');
+            console.log('Converted Binary to string:', filePath);
+          } else if (typeof filePath !== 'string') {
+            console.warn('Profile picture is not a string or Binary:', typeof filePath, filePath);
+            node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+          } else {
+            // Check if it's base64 encoded string
+            if (!filePath.startsWith('/') && !filePath.startsWith('http') && !filePath.includes('\\') && !filePath.includes('/')) {
+              try {
+                // Decode base64 to get the actual file path
+                filePath = Buffer.from(filePath, 'base64').toString('utf-8');
+                console.log('Decoded base64 file path:', filePath);
+              } catch (decodeError) {
+                console.warn('Failed to decode base64 profile picture:', decodeError);
+                node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+              }
+            }
+          }
+          
+          // Only proceed if we have a valid filePath string
+          if (filePath && typeof filePath === 'string') {
+            // Extract filename from the full path
+            const filename = path.basename(filePath);
+            
+            // Create proper accessible URL
+            node.profilePicture = `${req.protocol}://${req.get('host')}/uploads/team_profiles/${filename}`;
+          } else {
+            node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+          }
+          
+        } catch (error) {
+          console.error('Error processing profile picture:', error);
+          node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
+        }
       }
 
       const children = await TeamNode.find({ parent: id })
@@ -53,7 +95,7 @@ router.get("/tree", async (req, res) => {
         .lean();
       
       node.children = await Promise.all(
-        children.map((child) => buildTree(child._id))
+        children.map((child) => buildTree(child._id, req))
       );
 
       return node;
@@ -64,7 +106,7 @@ router.get("/tree", async (req, res) => {
       return res.status(404).json({ message: "Samiti Parent ID not found" });
     }
 
-    const samitiTree = await buildTree(samitiNode._id);
+    const samitiTree = await buildTree(samitiNode._id, req);
     res.json({ data: [samitiTree] });
 
   } catch (err) {
