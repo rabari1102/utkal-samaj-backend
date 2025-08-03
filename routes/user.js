@@ -7,7 +7,7 @@ const generateMemberPDF = require("../utils/generatePdf");
 const router = express.Router();
 
 // Get all members (only name and blood group)
-router.get("/members", auth(["user", "admin"]), async (req, res) => {
+router.get("/members", async (req, res) => {
   try {
     // Extract pagination values from query (with defaults)
     const page = parseInt(req.query.page) || 1;
@@ -50,7 +50,6 @@ router.get("/members", auth(["user", "admin"]), async (req, res) => {
 // Get member details (send to registered phone)
 router.post(
   "/member-details/:id",
-  auth(["user", "admin"]),
   async (req, res) => {
     try {
       const { id } = req.params;
