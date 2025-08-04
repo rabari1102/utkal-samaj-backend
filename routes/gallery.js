@@ -22,7 +22,8 @@ router.get("/getAllGallery", async (req, res) => {
       /\.(jpg|jpeg|png|gif|webp)$/i.test(file)
     );
 
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    // const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const baseUrl ='http://localhost:8080'
     const images = imageFiles.map((file) => ({
       name: file,
       url: `${baseUrl}/uploads/gallery/${file}`,
