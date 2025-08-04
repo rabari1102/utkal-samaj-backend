@@ -86,13 +86,6 @@ app.get('/', (req, res) => {
   res.send('✅ Backend is running!');
 });
 
-// 404 Fallback
-app.all('*', (req, res, next) => {
-  const err = new Error(`Can't find ${req.originalUrl} on this server!`);
-  err.status = 404;
-  next(err);
-});
-
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error('❌ UNHANDLED ERROR:', err);
