@@ -189,8 +189,7 @@ router.post(
       await event.save();
 
       // Construct full image URLs for response
-      // const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const baseUrl ='http://localhost:8080'
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
       const imageUrls = relativeImagePaths.map(
         p => `${baseUrl}/upload/${p}`
       );
@@ -275,8 +274,7 @@ router.put(
       }
 
       await event.save();
-      // const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const baseUrl ='http://localhost:8080'
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
       const imageUrls = event.images.map(
         p => `${baseUrl}/upload/${p}`
       );
@@ -312,8 +310,7 @@ router.post("/gallery", galleryUploader.array("images", 50), async (req, res) =>
       return res.status(400).json({ success: false, error: "No images were uploaded." });
     }
 
-    // const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const baseUrl ='http://localhost:8080'
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
     const uploadedFiles = req.files.map(file => {
       const normalizedPath = file.path.replace(/\\/g, "/"); // Normalize slashes

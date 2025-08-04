@@ -10,8 +10,7 @@ const router = express.Router();
  * Utility to generate full image URLs for an event
  */
 const generateImageUrls = (req, images) => {
-  // const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const baseUrl ='http://localhost:8080'
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
   return (images || []).map(imgPath =>
     `${baseUrl}/uploads/${imgPath.replace(/\\/g, '/')}`
   );

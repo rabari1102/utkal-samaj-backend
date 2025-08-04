@@ -108,8 +108,9 @@ router.get("/tree", async (req, res) => {
             console.log("Extracted filename:", filename);
 
             // Create proper accessible URL
-            // node.profilePicture = `${req.protocol}://${req.get("host")}/uploads/team_profiles/${filename}`;
-            node.profilePicture = `http://localhost:8080/uploads/team_profiles/${filename}`
+            node.profilePicture = `${req.protocol}://${req.get(
+              "host"
+            )}/uploads/team_profiles/${filename}`;
           } else {
             node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
           }
