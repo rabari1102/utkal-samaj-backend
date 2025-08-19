@@ -172,4 +172,57 @@ router.post(
   }
 );
 
+router.delete("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if the event ID is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid event ID" 
+      });
+    }
+
+    // Find the event to get image paths for deletion
+    const event = await Event.findById(id);
+    if (!event) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Event not found" 
+      });
+    }
+
+    // Delete associated images from the file system
+    if (event.images && event.images.length > 0) {
+      const uploadDir = path.join(__dirname, '..', 'upload');
+      event.images.forEach(imagePath => {
+        const fullImagePath = path.join(uploadDir, imagePath);
+        fs.unlink(fullImagePath, (err) => {
+          if (err) {
+            console.error(`Failed to delete image: ${fullImagePath}`, err);
+            // Don't stop the process if an image fails to delete, just log the error
+          }
+        });
+      });
+    }
+
+    // Delete the event from the database
+    await Event.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Event deleted successfully",
+    });
+
+  } catch (error) {
+    console.error("Event deletion error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
+});
+
 module.exports = router;

@@ -283,7 +283,7 @@ router.delete("/donor/:id", async (req, res) => {
       });
     }
 
-    const deletedDonor = await bloodDonation.findByIdAndDelete(id);
+    const deletedDonor = await User.findByIdAndDelete(id);
 
     if (!deletedDonor) {
       return res.status(404).json({
