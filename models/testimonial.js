@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 
-const eventSchema = new mongoose.Schema(
+const testiMonialSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },
+    name: { type: String, required: true },
     description: String,
-    eventDate: Date,
+    education: Date,
     location: String,
     type: String,
     images: [String], // array of relative paths
@@ -14,4 +14,4 @@ const eventSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("Event", eventSchema);
+module.exports = mongoose.model("testiMonial", testiMonialSchema);

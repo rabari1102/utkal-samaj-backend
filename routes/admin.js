@@ -183,6 +183,7 @@ router.post(
         description,
         eventDate,
         location,
+        type: "Upcoming", // Default type
         images: relativeImagePaths
       });
 

@@ -15,6 +15,17 @@ const xss = require('xss-clean');
 const connectDB = require('./config/database');
 const { sendDonationReminders } = require('./services/cronService');
 
+// ⏱ Day.js for timezone-aware cron work
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
+const APP_TZ = 'Asia/Kolkata';
+
+// 📦 Event model used by the hourly cron
+const Event = require('./models/Event'); // <-- ensure this path is correct for your project
+
 const app = express();
 app.set('trust proxy', 'loopback');
 
@@ -62,9 +73,8 @@ app.use(
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); // 👈 This is the key
     },
-      })
+  })
 );
-
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -76,6 +86,7 @@ app.use('/api/donations', require('./routes/Donation'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/news', require('./routes/news'));
+app.use('/api/testimonial', require('./routes/testimonial'));
 
 // Health Check
 app.get('/health', (req, res) => {
@@ -98,20 +109,76 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Cron Job
-cron.schedule(
-  '0 9 * * *',
-  () => {
-    console.log('⏰ Running daily donation reminder check...');
-    sendDonationReminders();
-  },
-  { timezone: 'Asia/Kolkata' }
-);
+/* ──────────────────────────────────────────────────────────────
+   🕒 CRON: Update events to LiveEvent when date is today/past
+   ────────────────────────────────────────────────────────────── */
+async function updateEventsToLive() {
+  // "now" in IST, end of current hour (generous within the hour window)
+  const now = dayjs().tz(APP_TZ).endOf('hour');
+  const nowDate = now.toDate();
+
+  // Select events whose eventDate <= "now" and not already LiveEvent
+  const filter = {
+    eventDate: { $lte: nowDate },
+    type: { $ne: 'LiveEvent' }
+  };
+
+  const update = {
+    $set: {
+      type: 'LiveEvent',
+      updatedAt: new Date()
+    }
+  };
+
+  try {
+    const result = await Event.updateMany(filter, update);
+    const matched = result.matchedCount ?? result.n ?? 0;
+    const modified = result.modifiedCount ?? result.nModified ?? 0;
+    console.log(
+      `[cron:event->Live] ${dayjs().tz(APP_TZ).format()} | cutoff<=${now.format()} | matched=${matched} modified=${modified}`
+    );
+  } catch (err) {
+    console.error('[cron:event->Live] Error while updating events:', err);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   🔔 CRON SCHEDULERS (scheduled after Mongo connects)
+   ────────────────────────────────────────────────────────────── */
+function scheduleCrons() {
+  // Hourly at minute 0 in IST
+  cron.schedule(
+    '0 * * * *',
+    () => {
+      console.log('⏰ Running hourly event status check...');
+      updateEventsToLive();
+    },
+    { timezone: APP_TZ }
+  );
+  console.log('[cron] Scheduled: hourly event updater at *:00 IST');
+
+  // Daily donation reminder at 09:00 IST (kept from your original)
+  cron.schedule(
+    '0 9 * * *',
+    () => {
+      console.log('⏰ Running daily donation reminder check...');
+      sendDonationReminders();
+    },
+    { timezone: APP_TZ }
+  );
+  console.log('[cron] Scheduled: daily donation reminders at 09:00 IST');
+}
 
 // Server Boot
 const PORT = process.env.PORT || 3000;
 connectDB()
-  .then(() => {
+  .then(async () => {
+    // Run once on startup to catch anything due immediately
+    await updateEventsToLive();
+
+    // Then schedule recurring jobs
+    scheduleCrons();
+
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
