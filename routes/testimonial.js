@@ -29,7 +29,7 @@ router.post(
       .trim()
       .isLength({ min: 5 })
       .withMessage("Description is too short"),
-    body("education").optional({ checkFalsy: true }),
+    body("education"),
     body("location").optional().trim(),
     body("type").optional().trim(),
   ],

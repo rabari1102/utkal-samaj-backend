@@ -4,7 +4,7 @@ const testiMonialSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     description: String,
-    education: Date,
+    education: String,
     location: String,
     type: String,
     images: [String], // array of relative paths
