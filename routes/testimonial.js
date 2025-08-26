@@ -29,7 +29,12 @@ router.post(
       .trim()
       .isLength({ min: 5 })
       .withMessage("Description is too short"),
-    body("education"),
+    body("successStory")
+      .optional()
+      .trim()
+      .isLength({ min: 5 })
+      .withMessage("successStory is too short"),
+    body("education").optional().trim(),
     body("location").optional().trim(),
     body("type").optional().trim(),
   ],
@@ -46,7 +51,7 @@ router.post(
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
-      const { name, description, education, location, type } = req.body;
+      const { name, description, education,successStory,location, type } = req.body;
 
       // Since we used .single("image"), file is at req.file (or undefined)
       const relativeImagePaths = req.file
@@ -56,10 +61,11 @@ router.post(
       const doc = new testiMonial({
         name,
         description,
-        education: education ? new Date(education) : undefined,
+        education,
+        successStory,
         location,
         type,
-        images: relativeImagePaths, // store relative paths
+        images: relativeImagePaths,
       });
 
       await doc.save();
@@ -74,6 +80,7 @@ router.post(
           name: doc.name,
           description: doc.description,
           education: doc.education,
+          successStory: doc.successStory,
           location: doc.location,
           type: doc.type,
           images: imageUrls, // public URLs

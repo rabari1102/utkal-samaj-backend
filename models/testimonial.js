@@ -4,6 +4,7 @@ const testiMonialSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     description: String,
+    successStory: String,
     education: String,
     location: String,
     type: String,
