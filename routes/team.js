@@ -21,7 +21,6 @@ router.post("/", teamUploader.single("profilePicture"), async (req, res) => {
       role,
       samiti,
       parent: parent || null,
-      // **IMPORTANT**: Store the file PATH, not the buffer
       profilePicture: req.file ? req.file.path : null,
     });
 

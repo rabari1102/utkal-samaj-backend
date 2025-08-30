@@ -129,11 +129,12 @@ router.post(
     body("firstName").trim().isLength({ min: 2 }),
     body("lastName").trim().isLength({ min: 2 }),
     body("fatherName").trim().isLength({ min: 2 }),
-    body("email").isEmail().withMessage("Valid email address required"), // Added email validation
+    body("email").isEmail().withMessage("Valid email address required"),
     body("phoneNumber").isMobilePhone(),
     body("presentAddress").trim().isLength({ min: 10 }),
     body("permanentAddress").trim().isLength({ min: 10 }),
     body("bloodGroup").isIn(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
+    body("role").optional().isIn(["user", "member", "admin"]), // 👈 add role validation
   ],
   async (req, res) => {
     try {
@@ -151,25 +152,30 @@ router.post(
         presentAddress,
         permanentAddress,
         bloodGroup,
+        role,
       } = req.body;
 
       // Check if user already exists with email or phone number
       const existingUserByEmail = await User.findOne({
         email,
+        phoneNumber,
         isApproved: false,
-        deletedAt: null
+        deletedAt: null,
       });
       if (existingUserByEmail) {
         return res.status(200).json({
           message:
             "Your ID is under process from our admin and will take 1-2 days to get created",
-          userId: existingUserByAddress._id,
+          userId: existingUserByEmail._id, // 👈 fixed variable name
         });
       }
 
       const existingUserByPhone = await User.findOne({
-        phoneNumber: phoneNumber,
-        deletedAt: null
+        firstName,
+        lastName,
+        email,
+        phoneNumber,
+        deletedAt: null,
       });
       if (existingUserByPhone) {
         return res
@@ -177,24 +183,38 @@ router.post(
           .json({ message: "User already exists with this phone number" });
       }
 
+      // Default flags
+      let isApproved = false;
+      let isActive = false;
+
+      // 👇 If role is "member", auto-approve and activate
+      if (role === "member") {
+        isApproved = true;
+        isActive = true;
+      }
+
       // Create user
       const user = new User({
         firstName,
         lastName,
         fatherName,
-        email, // Added email field
+        email,
         phoneNumber,
         presentAddress,
         permanentAddress,
         bloodGroup,
-        isApproved: false,
+        role,
+        isApproved,
+        isActive,
       });
 
       await user.save();
 
       res.json({
         message:
-          "Your ID is under process from our admin and will take 1-2 days to get created",
+          role === "member"
+            ? "Your account has been created successfully"
+            : "Your ID is under process from our admin and will take 1-2 days to get created",
         userId: user._id,
       });
     } catch (error) {

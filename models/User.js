@@ -1,22 +1,21 @@
 // models/User.js
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
   firstName: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   lastName: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   fatherName: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   email: {
     type: String,
@@ -24,9 +23,12 @@ const userSchema = new mongoose.Schema({
     unique: true,
     trim: true,
     lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email address']
+    match: [
+      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+      "Please enter a valid email address",
+    ],
   },
-  token:{
+  token: {
     type: String,
     required: false,
     unique: true,
@@ -35,51 +37,50 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    trim: true
+    trim: true,
   },
   presentAddress: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   permanentAddress: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   bloodGroup: {
     type: String,
     required: true,
-    enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+    enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
   },
   isApproved: {
     type: Boolean,
-    default: false
+    default: false,
   },
   isActive: {
     type: Boolean,
-    default: true
+    default: true,
   },
   role: {
     type: String,
-    enum: ['user', 'admin'],
-    default: 'user'
+    enum: ["user", "member", "admin"],
+    default: "user",
   },
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   updatedAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
-  deletedAt: { type: Date, default: null }
+  deletedAt: { type: Date, default: null },
 });
 
-userSchema.pre('save', function(next) {
+userSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
   next();
 });
 
-
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model("User", userSchema);
