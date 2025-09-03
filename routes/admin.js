@@ -1,28 +1,46 @@
 const express = require("express");
 const { body, validationResult } = require("express-validator");
+const path = require("path");
+const multer = require("multer");
+
 const User = require("../models/User");
 const Content = require("../models/Content");
 const Event = require("../models/Event");
-const path = require("path");
 const TeamNode = require("../models/Team");
 const Gallery = require("../models/Gallery");
 const News = require("../models/news");
 const Achievement = require("../models/Achivments");
-const { auth } = require("../middlewares/auth");
 
-// Import the uploader factory function
-const createUploader = require("../utils/upload");
+const { uploadBuffer, deleteObject, getSignedDownloadUrl, publicUrl } = require("../utils/s3");
 
-// Create specific uploaders for each route/purpose
-const contentUploader = createUploader("content");
-const eventsUploader = createUploader("events");
-const galleryUploader = createUploader("gallery");
-const newsUploader = createUploader("news");
-const achievementsUploader = createUploader("achievements");
+// ---- Config ----
+const ACL = process.env.S3_OBJECT_ACL || "private"; // 'private' or 'public-read'
+const USE_PUBLIC = ACL === "public-read";
+
+// In-memory uploads (no temp files)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
 const router = express.Router();
 
+// Helper: turn S3 key(s) into URL(s)
+async function keyToUrl(key) {
+  if (!key) return null;
+  return USE_PUBLIC ? publicUrl(key) : await getSignedDownloadUrl(key);
+}
+async function keysToUrls(keys = []) {
+  const urls = [];
+  for (const k of keys) {
+    urls.push(await keyToUrl(k));
+  }
+  return urls;
+}
+
+// -----------------------------
 // Get pending user approvals
+// -----------------------------
 router.get("/pending-users", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -58,7 +76,9 @@ router.get("/pending-users", async (req, res) => {
   }
 });
 
+// -----------------------------
 // Approve/reject user
+// -----------------------------
 router.put(
   "/users/:id/approval",
   [body("isApproved").isBoolean()],
@@ -80,21 +100,15 @@ router.put(
       user.isApproved = isApproved;
 
       if (isApproved === "false") {
-        console.log("hello");
-
         user.deletedAt = new Date(); // Soft delete
       } else {
-        console.log("falsse");
-
         user.deletedAt = null; // Restore
       }
 
       await user.save();
 
       res.json({
-        message: `User ${
-          isApproved ? "approved" : "soft deleted"
-        } successfully`,
+        message: `User ${isApproved ? "approved" : "soft deleted"} successfully`,
         user: {
           id: user._id,
           firstName: user.firstName,
@@ -111,10 +125,13 @@ router.put(
   }
 );
 
-// Content management - UPLOADS to 'upload/content/'
+// -----------------------------
+// Content management (single image) -> store S3 key in `image`
+// PUT /content/:section  (field: image)
+// -----------------------------
 router.put(
   "/content/:section",
-  contentUploader.single("image"), // Use contentUploader
+  upload.single("image"),
   [
     body("title").optional().isString(),
     body("content").isString(),
@@ -130,18 +147,47 @@ router.put(
       const { section } = req.params;
       const { title, content, link } = req.body;
 
-      let updateData = { content };
+      // Find existing to know old image key
+      const existing = await Content.findOne({ section });
+
+      let newImageKey = existing?.image || null;
+
+      // Upload new image if provided
+      if (req.file) {
+        const { key } = await uploadBuffer({
+          buffer: req.file.buffer,
+          contentType: req.file.mimetype,
+          folder: "content",
+          filename: req.file.originalname,
+          acl: ACL,
+          metadata: { section },
+        });
+        newImageKey = key;
+      }
+
+      const updateData = {
+        content,
+        updatedAt: Date.now(),
+      };
       if (title) updateData.title = title;
       if (link) updateData.link = link;
-      if (req.file) updateData.image = req.file.path; // req.file is from .single()
+      if (newImageKey) updateData.image = newImageKey; // store S3 key in `image`
 
-      const updatedContent = await Content.findOneAndUpdate(
+      const updated = await Content.findOneAndUpdate(
         { section },
-        { ...updateData, updatedAt: Date.now() },
+        updateData,
         { new: true, upsert: true }
       );
 
-      res.json(updatedContent);
+      // Cleanup old image AFTER successful save
+      if (req.file && existing?.image && existing.image !== newImageKey) {
+        try { await deleteObject(existing.image); } catch (e) { console.warn("S3 delete failed:", e); }
+      }
+
+      res.json({
+        ...updated.toObject(),
+        imageUrl: await keyToUrl(updated.image),
+      });
     } catch (error) {
       console.error("Content update error:", error);
       res.status(500).json({ error: "Server error" });
@@ -149,10 +195,13 @@ router.put(
   }
 );
 
-// CREATE EVENT API - Minor fixes
+// -----------------------------
+// CREATE EVENT
+// POST /events  (field: images[])
+// -----------------------------
 router.post(
   "/events",
-  eventsUploader.array("images", 50),
+  upload.array("images", 50),
   [
     body("title").trim().isLength({ min: 3 }).withMessage("Title is too short"),
     body("description").trim().isLength({ min: 10 }).withMessage("Description is too short"),
@@ -168,33 +217,30 @@ router.post(
 
       const { title, description, eventDate, location } = req.body;
 
-      // Prepare relative image paths (more robust handling)
-      const relativeImagePaths = (req.files || []).map(file => {
-        // Get relative path from upload directory
-        const relativePath = path
-          .relative(path.join(__dirname, "..", "upload"), file.path)
-          .replace(/\\/g, "/"); // Ensure forward slashes for consistency
-        return relativePath;
-      });
+      // Upload all images to S3
+      const imageKeys = [];
+      for (const file of (req.files || [])) {
+        const { key } = await uploadBuffer({
+          buffer: file.buffer,
+          contentType: file.mimetype,
+          folder: "events",
+          filename: file.originalname,
+          acl: ACL,
+          metadata: { title },
+        });
+        imageKeys.push(key);
+      }
 
-      // Save to MongoDB
       const event = new Event({
         title,
         description,
         eventDate,
         location,
-        type: "Upcoming", // Default type
-        images: relativeImagePaths
+        type: "Upcoming",
+        images: imageKeys, // store S3 keys
       });
 
       await event.save();
-
-      // Construct full image URLs for response
-      // const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const baseUrl ='http://localhost:8080'
-      const imageUrls = relativeImagePaths.map(
-        p => `${baseUrl}/upload/${p}`
-      );
 
       res.status(201).json({
         success: true,
@@ -205,25 +251,28 @@ router.post(
           description: event.description,
           eventDate: event.eventDate,
           location: event.location,
-          images: imageUrls
+          images: await keysToUrls(event.images),
         }
       });
-
     } catch (error) {
       console.error("Event creation error:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         error: "Internal server error",
-        message: error.message 
+        message: error.message
       });
     }
   }
 );
 
-// FIXED UPDATE EVENT API
+// -----------------------------
+// UPDATE EVENT
+// PUT /eventUpdate/:id  (field: images[] optional)
+// Body can include: removeImageKeys: string[]  -> S3 keys to remove
+// -----------------------------
 router.put(
   "/eventUpdate/:id",
-  eventsUploader.array("images", 50),
+  upload.array("images", 50),
   [
     body("title").optional().trim().isLength({ min: 3 }).withMessage("Title is too short"),
     body("description").optional().trim().isLength({ min: 10 }).withMessage("Description is too short"),
@@ -232,7 +281,6 @@ router.put(
   ],
   async (req, res) => {
     try {
-      // Validate request
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -241,47 +289,60 @@ router.put(
       const eventId = req.params.id;
       const updates = req.body;
 
-      // Validate ObjectId
       if (!eventId.match(/^[0-9a-fA-F]{24}$/)) {
-        return res.status(400).json({ 
-          success: false,
-          error: "Invalid event ID format" 
-        });
+        return res.status(400).json({ success: false, error: "Invalid event ID format" });
       }
 
-      // Find the existing event
       const event = await Event.findById(eventId);
       if (!event) {
-        return res.status(404).json({ 
-          success: false,
-          error: "Event not found" 
-        });
+        return res.status(404).json({ success: false, error: "Event not found" });
       }
 
-      // Update fields if provided
+      // Field updates
       if (updates.title !== undefined) event.title = updates.title;
       if (updates.description !== undefined) event.description = updates.description;
       if (updates.eventDate !== undefined) event.eventDate = updates.eventDate;
       if (updates.location !== undefined) event.location = updates.location;
 
-      // Handle new images
+      // Remove images if requested (expects array of S3 keys)
+      // Client can send JSON array or comma-separated string
+      let removeKeys = [];
+      if (updates.removeImageKeys) {
+        try {
+          removeKeys = Array.isArray(updates.removeImageKeys)
+            ? updates.removeImageKeys
+            : JSON.parse(updates.removeImageKeys);
+        } catch {
+          // maybe comma separated
+          removeKeys = String(updates.removeImageKeys).split(",").map(s => s.trim()).filter(Boolean);
+        }
+      }
+
+      if (removeKeys.length) {
+        event.images = (event.images || []).filter(k => !removeKeys.includes(k));
+      }
+
+      // Add newly uploaded images
       if (req.files && req.files.length > 0) {
-        // Process new images to relative paths (same as CREATE)
-        const newRelativeImagePaths = req.files.map(file => {
-          return path
-            .relative(path.join(__dirname, "..", "upload"), file.path)
-            .replace(/\\/g, "/");
-        });
-        event.images = [...event.images, ...newRelativeImagePaths];
+        for (const file of req.files) {
+          const { key } = await uploadBuffer({
+            buffer: file.buffer,
+            contentType: file.mimetype,
+            folder: "events",
+            filename: file.originalname,
+            acl: ACL,
+            metadata: { eventId },
+          });
+          event.images.push(key);
+        }
       }
 
       await event.save();
-      // const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const baseUrl ='http://localhost:8080'
-      const imageUrls = event.images.map(
-        p => `${baseUrl}/upload/${p}`
-      );
-console.log(imageUrls,"imageUrlsimageUrls");
+
+      // Cleanup removed S3 objects AFTER save succeeds
+      for (const k of removeKeys) {
+        try { await deleteObject(k); } catch (e) { console.warn("S3 delete failed:", e); }
+      }
 
       res.status(200).json({
         success: true,
@@ -292,109 +353,59 @@ console.log(imageUrls,"imageUrlsimageUrls");
           description: event.description,
           eventDate: event.eventDate,
           location: event.location,
-          images: imageUrls
+          images: await keysToUrls(event.images),
         }
       });
 
     } catch (error) {
       console.error("Event update error:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         error: "Server error",
-        message: error.message 
+        message: error.message
       });
     }
   }
 );
 
-router.post("/gallery", galleryUploader.array("images", 50), async (req, res) => {
+// -----------------------------
+// GALLERY (multi-image)
+// POST /gallery  (field: images[])
+// -----------------------------
+router.post("/gallery", upload.array("images", 50), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ success: false, error: "No images were uploaded." });
     }
 
-    // const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const baseUrl ='http://localhost:8080'
+    const keys = [];
+    for (const file of req.files) {
+      const { key } = await uploadBuffer({
+        buffer: file.buffer,
+        contentType: file.mimetype,
+        folder: "gallery",
+        filename: file.originalname,
+        acl: ACL,
+        metadata: { source: "gallery" },
+      });
+      keys.push(key);
+    }
 
-    const uploadedFiles = req.files.map(file => {
-      const normalizedPath = file.path.replace(/\\/g, "/"); // Normalize slashes
-      const relativePath = path.relative(path.join(__dirname, "..", "upload"), normalizedPath);
-      return {
-        name: file.filename,
-        path: normalizedPath,
-        url: `${baseUrl}/uploads/${relativePath}`,
-      };
-    });
+    // If you store gallery entries in Mongo, you can persist `keys` here:
+    // await Gallery.create({ images: keys, ... });
+
+    const urls = await keysToUrls(keys);
+    const files = keys.map((k, i) => ({ key: k, url: urls[i] }));
 
     res.status(200).json({
       success: true,
       message: "Images uploaded successfully to the gallery",
-      files: uploadedFiles,
+      files,
     });
   } catch (error) {
     console.error("Gallery image upload error:", error);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
-
-// News management - UPLOADS to 'upload/news/'
-router.post(
-  "/news",
-  newsUploader.single("image"), // Use newsUploader
-  [
-    body("title").trim().isLength({ min: 3 }),
-    body("content").trim().isLength({ min: 10 }),
-    body("isUpcoming").optional().isBoolean(),
-    body("registrationLink").optional().isURL(),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const newsData = { ...req.body };
-      if (req.file) newsData.image = req.file.path; // req.file from .single()
-
-      const news = new News(newsData);
-      await news.save();
-      res.status(201).json(news);
-    } catch (error) {
-      console.error("News creation error:", error);
-      res.status(500).json({ error: "Server error" });
-    }
-  }
-);
-
-// Achievement management - UPLOADS to 'upload/achievements/'
-router.post(
-  "/achievements",
-  achievementsUploader.single("image"), // Use achievementsUploader
-  [
-    body("title").trim().isLength({ min: 3 }),
-    body("description").trim().isLength({ min: 10 }),
-    body("achievementDate").isISO8601(),
-    body("category").optional().isIn(["award", "recognition", "milestone", "other"]),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const achievementData = { ...req.body };
-      if (req.file) achievementData.image = req.file.path; // req.file from .single()
-
-      const achievement = new Achievement(achievementData);
-      await achievement.save();
-      res.status(201).json(achievement);
-    } catch (error) {
-      console.error("Achievement creation error:", error);
-      res.status(500).json({ error: "Server error" });
-    }
-  }
-);
 
 module.exports = router;

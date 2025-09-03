@@ -1,27 +1,62 @@
+// routes/team.js
 const express = require("express");
+const multer = require("multer");
 const TeamNode = require("../models/Team");
-const createUploader = require("../utils/upload"); // Import the factory
-const path = require("path");
+const Event = require("../models/Event"); // used by the /events/:id delete route at bottom
+
+// S3 helpers
+const {
+  uploadBuffer,
+  deleteObject,
+  getSignedDownloadUrl,
+  publicUrl,
+} = require("../utils/s3");
+
 const router = express.Router();
 
-// Create a specific uploader for team profile pictures
-// Files will be saved in 'upload/team_profiles/'
-const teamUploader = createUploader("team_profiles");
+// ---------------- S3/Upload config ----------------
+const ACL = process.env.S3_OBJECT_ACL || "private"; // 'private' or 'public-read'
+const USE_PUBLIC = ACL === "public-read";
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
-// Default profile picture path (client should resolve this)
+// Default profile picture path (let frontend resolve this asset)
 const DEFAULT_PROFILE_PIC_PATH = "/defaults/avatar.png";
 
+// Helpers to turn stored S3 keys into URLs for responses
+async function keyToUrl(key) {
+  if (!key) return null;
+  return USE_PUBLIC ? publicUrl(key) : await getSignedDownloadUrl(key);
+}
+
+/* ------------------------------- CREATE ------------------------------- */
 // POST a new team member
-router.post("/", teamUploader.single("profilePicture"), async (req, res) => {
+// field: profilePicture (optional)
+router.post("/", upload.single("profilePicture"), async (req, res) => {
   try {
     const { name, role, samiti, parent } = req.body;
+
+    let profileKey = null;
+    if (req.file) {
+      const { key } = await uploadBuffer({
+        buffer: req.file.buffer,
+        contentType: req.file.mimetype,
+        folder: "team_profiles",
+        filename: req.file.originalname,
+        acl: ACL,
+        metadata: { entity: "team" },
+      });
+      profileKey = key;
+    }
 
     const teamNode = new TeamNode({
       name,
       role,
       samiti,
       parent: parent || null,
-      profilePicture: req.file ? req.file.path : null,
+      profilePicture: profileKey, // store S3 key (or null)
     });
 
     await teamNode.save();
@@ -30,114 +65,42 @@ router.post("/", teamUploader.single("profilePicture"), async (req, res) => {
       .status(201)
       .json({ message: "Team node created successfully", id: teamNode._id });
   } catch (err) {
+    console.error("[team:create] Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET the full team tree
+/* ------------------------------- TREE ------------------------------- */
+// GET the full team tree (starting from a root SAMITI node)
 router.get("/tree", async (req, res) => {
   try {
-    const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22"; // Use your actual root ID
+    const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22"; // TODO: move to config/env
 
-    const buildTree = async (id, req) => {
+    const buildTree = async (id) => {
       const node = await TeamNode.findById(id).lean();
       if (!node) return null;
 
-      // Handle profile picture URL formatting
-      if (!node.profilePicture) {
-        node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
-      } else {
-        try {
-          let filePath = node.profilePicture;
-
-          // Handle MongoDB Binary object
-          if (filePath && typeof filePath === "object" && filePath.buffer) {
-            // Convert MongoDB Binary to string
-            filePath = filePath.buffer.toString("utf-8");
-            console.log("Converted Binary to string:", filePath);
-          } else if (typeof filePath !== "string") {
-            console.warn(
-              "Profile picture is not a string or Binary:",
-              typeof filePath,
-              filePath
-            );
-            node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
-            return node;
-          } else {
-            // Check if it's base64 encoded string
-            if (
-              !filePath.startsWith("/") &&
-              !filePath.startsWith("http") &&
-              !filePath.includes("\\") &&
-              !filePath.includes("/")
-            ) {
-              try {
-                // Decode base64 to get the actual file path
-                filePath = Buffer.from(filePath, "base64").toString("utf-8");
-                console.log("Decoded base64 file path:", filePath);
-              } catch (decodeError) {
-                console.warn(
-                  "Failed to decode base64 profile picture:",
-                  decodeError
-                );
-                node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
-                return node;
-              }
-            }
-          }
-
-          // Only proceed if we have a valid filePath string
-          if (filePath && typeof filePath === "string") {
-            // Extract filename from the full path - handle both Windows and Unix paths
-            let filename;
-
-            // Handle Windows paths (backslashes)
-            if (filePath.includes("\\")) {
-              filename = filePath.split("\\").pop();
-            }
-            // Handle Unix paths (forward slashes)
-            else if (filePath.includes("/")) {
-              filename = filePath.split("/").pop();
-            }
-            // If no path separators, assume it's already a filename
-            else {
-              filename = filePath;
-            }
-
-            console.log("Extracted filename:", filename);
-
-            // Create proper accessible URL
-            // node.profilePicture = `${req.protocol}://${req.get("host")}/uploads/team_profiles/${filename}`;
-            node.profilePicture = `http://localhost:8080/uploads/team_profiles/${filename}`
-          } else {
-            node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
-          }
-        } catch (error) {
-          console.error("Error processing profile picture:", error);
-          node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
-        }
-      }
+      // Resolve picture URL from S3 key
+      const picKey = node.profilePicture || null;
+      node.profilePicture = picKey ? await keyToUrl(picKey) : DEFAULT_PROFILE_PIC_PATH;
 
       const children = await TeamNode.find({ parent: id })
         .sort({ createdAt: "ascending" })
         .lean();
 
-      node.children = await Promise.all(
-        children.map((child) => buildTree(child._id, req))
-      );
-
+      node.children = await Promise.all(children.map((child) => buildTree(child._id)));
       return node;
     };
 
-    const samitiNode = await TeamNode.findById(SAMITI_PARENT_ID).lean();
-    if (!samitiNode) {
+    const root = await TeamNode.findById(SAMITI_PARENT_ID).lean();
+    if (!root) {
       return res.status(404).json({ message: "Samiti Parent ID not found" });
     }
 
-    const samitiTree = await buildTree(samitiNode._id, req);
-    res.json({ data: [samitiTree] });
+    const tree = await buildTree(root._id);
+    res.json({ data: [tree] });
   } catch (err) {
-    console.error(err);
+    console.error("[team:tree] Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -150,14 +113,11 @@ router.get("/tree/:id", async (req, res) => {
       const node = await TeamNode.findById(id).lean();
       if (!node) return null;
 
-      if (!node.profilePicture) {
-        node.profilePicture = DEFAULT_PROFILE_PIC_PATH;
-      }
+      const picKey = node.profilePicture || null;
+      node.profilePicture = picKey ? await keyToUrl(picKey) : DEFAULT_PROFILE_PIC_PATH;
 
       const children = await TeamNode.find({ parent: id }).lean();
-      node.children = await Promise.all(
-        children.map((child) => buildTree(child._id))
-      );
+      node.children = await Promise.all(children.map((child) => buildTree(child._id)));
 
       return node;
     };
@@ -165,53 +125,69 @@ router.get("/tree/:id", async (req, res) => {
     const tree = await buildTree(nodeId);
     if (!tree) return res.status(404).json({ message: "Node not found" });
 
-    // Corrected variable name from 'trees' to 'tree'
     res.json({ data: tree });
   } catch (err) {
-    console.error(err);
+    console.error("[team:subtree] Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// UPDATE a team member
-router.put("/:id", teamUploader.single("profilePicture"), async (req, res) => {
+/* ------------------------------- UPDATE ------------------------------- */
+// UPDATE a team member (replace profile picture if new one provided)
+// field: profilePicture (optional)
+router.put("/:id", upload.single("profilePicture"), async (req, res) => {
   try {
     const { name, role, samiti, parent } = req.body;
-    const updateData = {};
+    const existing = await TeamNode.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: "Team member not found" });
 
-    if (name) updateData.name = name;
-    if (role) updateData.role = role;
-    if (samiti) updateData.samiti = samiti;
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (role !== undefined) updateData.role = role;
+    if (samiti !== undefined) updateData.samiti = samiti;
     if (parent !== undefined) updateData.parent = parent;
 
-    // **IMPORTANT**: If a new file is uploaded, update its PATH
+    let oldKeyToDelete = null;
+
     if (req.file) {
-      updateData.profilePicture = req.file.path;
+      // upload new to S3
+      const { key } = await uploadBuffer({
+        buffer: req.file.buffer,
+        contentType: req.file.mimetype,
+        folder: "team_profiles",
+        filename: req.file.originalname,
+        acl: ACL,
+        metadata: { entity: "team", id: String(existing._id) },
+      });
+
+      // mark old key for deletion after successful save
+      if (existing.profilePicture) oldKeyToDelete = existing.profilePicture;
+
+      updateData.profilePicture = key;
     }
 
-    const updatedNode = await TeamNode.findByIdAndUpdate(
-      req.params.id,
-      { $set: updateData },
-      { new: true }
-    );
+    Object.assign(existing, updateData);
+    await existing.save();
 
-    if (!updatedNode) {
-      return res.status(404).json({ message: "Team member not found" });
+    // best-effort cleanup of old object AFTER save succeeds
+    if (oldKeyToDelete) {
+      try { await deleteObject(oldKeyToDelete); } catch (e) { console.warn("[team:update] S3 delete failed:", e); }
     }
 
-    res.json(updatedNode);
+    res.json(existing);
   } catch (error) {
+    console.error("[team:update] Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
+/* ------------------------------- DELETE EVENT (with S3 images) ------------------------------- */
+// This endpoint was in your file; converting it to delete S3 images instead of disk files.
 router.delete("/events/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1. Find the event:
     const event = await Event.findById(id);
-
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -219,26 +195,19 @@ router.delete("/events/:id", async (req, res) => {
       });
     }
 
-    // 2. Iterate and delete each image:
-    if (event.images && event.images.length > 0) { // Checks if there are any images
-      for (const relativeImagePath of event.images) { // Loops through each image path
-        const imagePath = path.join(__dirname, "..", "upload", relativeImagePath);
+    // event.images is expected to be an array of S3 KEYS
+    if (Array.isArray(event.images) && event.images.length > 0) {
+      for (const key of event.images) {
         try {
-          if (fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath); // Deletes the individual image file
-            console.log(`Deleted image: ${imagePath}`);
-          } else {
-            console.log(`Image not found on disk (already deleted or path mismatch): ${imagePath}`);
-          }
+          await deleteObject(key);
+          console.log(`[event:delete] Deleted S3 object: ${key}`);
         } catch (unlinkError) {
-          console.error(`Error deleting image ${imagePath}:`, unlinkError);
-          // Important: Even if one image fails to delete, the loop continues,
-          // and the event document will still be deleted from the database.
+          console.error(`[event:delete] Error deleting S3 object ${key}:`, unlinkError?.message || unlinkError);
+          // continue regardless
         }
       }
     }
 
-    // 3. Delete the event from the database:
     await Event.findByIdAndDelete(id);
 
     res.status(200).json({
@@ -246,7 +215,7 @@ router.delete("/events/:id", async (req, res) => {
       message: "Event deleted successfully",
     });
   } catch (error) {
-    console.error("Event deletion error:", error);
+    console.error("[event:delete] Error:", error);
     res.status(500).json({
       success: false,
       error: "Internal server error",
