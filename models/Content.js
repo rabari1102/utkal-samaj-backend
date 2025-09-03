@@ -3,16 +3,15 @@ const mongoose = require('mongoose');
 const contentSchema = new mongoose.Schema({
   section: {
     type: String,
-    required: true,
-    enum: ['about', 'commitment', 'vision', 'latest_updates', 'thought_of_day']
+    required: false,
   },
   title: {
     type: String,
-    required: true
+    required: false
   },
-  content: {
+  body: {
     type: String,
-    required: true
+    required: false
   },
   image: {
     type: String
@@ -22,7 +21,7 @@ const contentSchema = new mongoose.Schema({
   },
   isActive: {
     type: Boolean,
-    default: true
+    default: false
   },
   createdAt: {
     type: Date,

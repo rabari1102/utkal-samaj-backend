@@ -48,13 +48,6 @@ router.post(
   ],
   async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        // Cleanup uploaded files if validation fails
-        (req.files || []).forEach((f) => safeDelete(f.path));
-        return res.status(400).json({ success: false, errors: errors.array() });
-      }
-
       const { section, title, body: contentBody, isActive = true } = req.body;
 
       const relativeImages = (req.files || []).map((f) => toRelativePath(f.path));
@@ -89,101 +82,30 @@ router.post(
 );
 
 // -------------------- getAll --------------------
-// GET /content? page&limit&section&isActive&q&sort&fields
-// sort example: "-createdAt,title" | "title"
-// fields example: "section,title,isActive"
-router.get(
-  "/",
-  [
-    query("page").optional().isInt({ min: 1 }).toInt(),
-    query("limit").optional().isInt({ min: 1, max: 100 }).toInt(),
-    query("section").optional().isString().trim(),
-    query("isActive").optional().isBoolean().toBoolean(),
-    query("q").optional().isString().trim(),
-    query("sort").optional().isString().trim(),
-    query("fields").optional().isString().trim(),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ success: false, errors: errors.array() });
-      }
+router.get("/getContent", async (req, res) => {
+  try {
+    const items = await Content.find().sort({ createdAt: -1 });
 
-      const {
-        page = 1,
-        limit = 20,
-        section,
-        isActive,
-        q,
-        sort,
-        fields,
-      } = req.query;
+    const data = items.map((doc) => ({
+      ...doc.toObject(),
+      imageUrls: mapUrls(req, doc.image || []),
+    }));
 
-      const filter = {};
-      if (typeof section !== "undefined") filter.section = section;
-      if (typeof isActive !== "undefined") filter.isActive = isActive;
-      if (q) {
-        filter.$or = [
-          { title: { $regex: q, $options: "i" } },
-          { body: { $regex: q, $options: "i" } },
-          { section: { $regex: q, $options: "i" } },
-        ];
-      }
-
-      const sortObj = {};
-      if (sort) {
-        sort.split(",").forEach((s) => {
-          s = s.trim();
-          if (!s) return;
-          if (s.startsWith("-")) sortObj[s.slice(1)] = -1;
-          else sortObj[s] = 1;
-        });
-      } else {
-        sortObj.createdAt = -1;
-      }
-
-      let projection = undefined;
-      if (fields) {
-        projection = {};
-        fields.split(",").forEach((f) => {
-          f = f.trim();
-          if (f) projection[f] = 1;
-        });
-        // Always include images to generate imageUrls below if omitted
-        projection.images = 1;
-      }
-
-      const skip = (page - 1) * limit;
-
-      const [items, total] = await Promise.all([
-        Content.find(filter, projection).sort(sortObj).skip(skip).limit(limit),
-        Content.countDocuments(filter),
-      ]);
-
-      const data = items.map((doc) => ({
-        ...doc.toObject(),
-        imageUrls: mapUrls(req, doc.images || []),
-      }));
-
-      return res.json({
-        success: true,
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / limit),
-        data,
-      });
-    } catch (error) {
-      console.error("[content:getAll] Error:", error);
-      return res.status(500).json({
-        success: false,
-        error: "Server error",
-        message: error.message,
-      });
-    }
+    return res.json({
+      success: true,
+      total: data.length,
+      data,
+    });
+  } catch (error) {
+    console.error("[content:getAllSimple] Error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Server error",
+      message: error.message,
+    });
   }
-);
+});
+
 
 // -------------------- getById --------------------
 router.get("/:id", async (req, res) => {
@@ -220,12 +142,6 @@ router.patch(
   ],
   async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        (req.files || []).forEach((f) => safeDelete(f.path));
-        return res.status(400).json({ success: false, errors: errors.array() });
-      }
-
       const existing = await Content.findById(req.params.id);
       if (!existing) {
         (req.files || []).forEach((f) => safeDelete(f.path));
