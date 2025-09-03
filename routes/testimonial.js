@@ -21,7 +21,11 @@ const USE_PUBLIC = ACL === "public-read";
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: 10 * 1024 * 1024,   // 10 MB file
+    fieldSize: 25 * 1024 * 1024,  // 25 MB total for text fields (default ~1MB)
+    fields: 50,                    // optional: max number of text fields
+  },
 });
 
 // Helpers to turn stored S3 keys into URLs for responses
@@ -40,34 +44,65 @@ async function keysToUrls(keys = []) {
 /* ------------------------------- Create API ------------------------------ */
 // POST /AddTestimonial  (field: image)
 router.post(
-  "/AddTestimonial",
+  "/addTestimonial",
   upload.single("image"),
   [
-    body("name").trim().isLength({ min: 2 }).withMessage("Name is required"),
-    body("description").optional().trim().isLength({ min: 5 }).withMessage("Description is too short"),
-    body("successStory").optional().trim().isLength({ min: 5 }).withMessage("successStory is too short"),
+    body("name")
+      .trim()
+      .isLength({ min: 2 })
+      .withMessage("Name is required (min 2 chars)"),
+    body("description")
+      .optional()
+      .trim()
+      .isLength({ min: 5 })
+      .withMessage("Description is too short (min 5 chars)"),
+    body("successStory")
+      .optional()
+      .trim()
+      .isLength({ min: 5 })
+      .withMessage("Success story is too short (min 5 chars)"),
     body("education").optional().trim(),
     body("location").optional().trim(),
     body("type").optional().trim(),
   ],
   async (req, res) => {
     try {
-      const { name, description, education, successStory, location, type } = req.body;
+      // ✅ Handle validation errors
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          errors: errors.array(),
+        });
+      }
 
-      // Upload single image (if provided) to S3
+      const { name, description, education, successStory, location, type } =
+        req.body;
+
       const imageKeys = [];
+
+      // ✅ If an image was uploaded, push it to S3
       if (req.file) {
+        console.log(
+          "[testimonial:create] Uploading image:",
+          req.file.originalname,
+          req.file.mimetype,
+          req.file.size
+        );
+
         const { key } = await uploadBuffer({
           buffer: req.file.buffer,
           contentType: req.file.mimetype,
           folder: "testimonials",
           filename: req.file.originalname,
-          acl: ACL,
           metadata: { entity: "testimonial", name },
         });
+
+        console.log(key, "uploaded to S3 ✅");
         imageKeys.push(key);
       }
 
+      // ✅ Save testimonial
       const doc = new Testimonial({
         name,
         description,
@@ -75,14 +110,14 @@ router.post(
         successStory,
         location,
         type,
-        images: imageKeys, // store S3 keys
+        images: imageKeys, // store raw S3 keys
       });
 
       await doc.save();
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
-        message: "Testimonial created successfully",
+        message: "Testimonial created successfully ✅",
         data: {
           id: doc._id,
           name: doc.name,
@@ -91,7 +126,7 @@ router.post(
           successStory: doc.successStory,
           location: doc.location,
           type: doc.type,
-          images: await keysToUrls(doc.images),
+          images: await keysToUrls(doc.images), // convert to URLs
         },
       });
     } catch (err) {

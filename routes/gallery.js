@@ -1,33 +1,49 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
+const {
+  ListObjectsV2Command,
+  DeleteObjectCommand,
+} = require("@aws-sdk/client-s3");
+const {
+  getSignedUrl,
+} = require("@aws-sdk/s3-request-presigner");
+const { s3, getSignedDownloadUrl, publicUrl } = require("../utils/s3");
+
 const router = express.Router();
+
+const BUCKET = process.env.S3_BUCKET;
+const ACL = process.env.S3_OBJECT_ACL || "private"; // 'private' or 'public-read'
+const USE_PUBLIC = ACL === "public-read";
 
 /**
  * @route GET /getAllGallery
- * @desc Get all uploaded gallery images
+ * @desc List all gallery images from S3
  */
 router.get("/getAllGallery", async (req, res) => {
   try {
-    const galleryDir = path.join(__dirname, "../upload/gallery");
+    const command = new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: "gallery/", // only gallery folder
+    });
 
-    if (!fs.existsSync(galleryDir)) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Gallery folder not found." });
-    }
+    const response = await s3.send(command);
 
-    const files = fs.readdirSync(galleryDir);
-    const imageFiles = files.filter((file) =>
-      /\.(jpg|jpeg|png|gif|webp)$/i.test(file)
+    const contents = response.Contents || [];
+    const images = await Promise.all(
+      contents
+        .filter((obj) => /\.(jpg|jpeg|png|gif|webp)$/i.test(obj.Key))
+        .map(async (obj) => {
+          const url = USE_PUBLIC
+            ? publicUrl(obj.Key)
+            : await getSignedDownloadUrl(obj.Key);
+          return {
+            name: obj.Key.replace("gallery/", ""), // filename only
+            key: obj.Key,
+            url,
+            size: obj.Size,
+            lastModified: obj.LastModified,
+          };
+        })
     );
-
-    // const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const baseUrl ='http://localhost:8080'
-    const images = imageFiles.map((file) => ({
-      name: file,
-      url: `${baseUrl}/uploads/gallery/${file}`,
-    }));
 
     res.status(200).json({
       success: true,
@@ -35,68 +51,47 @@ router.get("/getAllGallery", async (req, res) => {
       images,
     });
   } catch (error) {
-    console.error("Error reading gallery folder:", error);
+    console.error("[gallery:getAll] Error:", error);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
+/**
+ * @route DELETE /deleteGalleryPhoto/:filename
+ * @desc Delete a gallery photo from S3
+ */
 router.delete("/deleteGalleryPhoto/:filename", async (req, res) => {
   try {
     const { filename } = req.params;
 
-    // Validate filename (security check)
-    if (
-      !filename ||
-      filename.includes("..") ||
-      filename.includes("/") ||
-      filename.includes("\\")
-    ) {
+    // security check
+    if (!filename || filename.includes("..") || filename.includes("/")) {
       return res.status(400).json({
         success: false,
         error: "Invalid filename",
       });
     }
 
-    const galleryDir = path.join(__dirname, "../upload/gallery");
-    const filePath = path.join(galleryDir, filename);
+    const key = `gallery/${filename}`;
 
-    // Check if gallery directory exists
-    if (!fs.existsSync(galleryDir)) {
-      return res.status(404).json({
-        success: false,
-        error: "Gallery folder not found",
-      });
-    }
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+    });
 
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        error: "Photo not found",
-      });
-    }
-
-    // Verify it's an image file
-    if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(filename)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid file type",
-      });
-    }
-
-    // Delete the file
-    fs.unlinkSync(filePath);
+    await s3.send(command);
 
     res.status(200).json({
       success: true,
-      message: `Photo '${filename}' deleted successfully`,
+      message: `Photo '${filename}' deleted successfully from gallery`,
     });
   } catch (error) {
-    console.error("Error deleting photo:", error);
+    console.error("[gallery:delete] Error:", error);
     res.status(500).json({
       success: false,
       error: "Server error while deleting photo",
     });
   }
 });
+
 module.exports = router;
