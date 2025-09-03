@@ -123,7 +123,7 @@ router.get("/getAllTestimonials", async (req, res) => {
 });
 
 // EDIT: update a testimonial (partial update), optionally replace image
-router.patch(
+router.put(
   "/editTestimonial/:id",
   testimonialUploader.single("image"), // optional
   async (req, res) => {
