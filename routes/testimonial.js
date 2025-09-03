@@ -125,69 +125,47 @@ router.get("/getAllTestimonials", async (req, res) => {
 // EDIT: update a testimonial (partial update), optionally replace image
 router.patch(
   "/editTestimonial/:id",
-  testimonialUploader.single("image"),
-  [
-    body("name").optional().trim().isLength({ min: 2 }).withMessage("Name is too short"),
-    body("description").optional().trim().isLength({ min: 5 }).withMessage("Description is too short"),
-    body("successStory").optional().trim().isLength({ min: 5 }).withMessage("successStory is too short"),
-    body("education").optional().trim(),
-    body("location").optional().trim(),
-    body("type").optional().trim(),
-  ],
+  testimonialUploader.single("image"), // optional
   async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        // Clean up uploaded file if validation fails
-        if (req.file) {
-          try {
-            fs.unlinkSync(req.file.path);
-          } catch (_) {}
-        }
-        return res.status(400).json({ success: false, errors: errors.array() });
-      }
-
       const { id } = req.params;
-
-      // Find existing doc first (we need current images for cleanup logic)
+      // Fetch existing doc (needed for image cleanup)
       const existing = await testiMonial.findById(id);
       if (!existing) {
-        // If not found, also clean up any uploaded file
-        if (req.file) {
-          try {
-            fs.unlinkSync(req.file.path);
-          } catch (_) {}
-        }
         return res.status(404).json({ success: false, error: "Testimonial not found" });
       }
 
-      // Build updates object only with defined fields
+      // Collect all updatable fields (no validation – whatever you send will be set)
       const fields = ["name", "description", "education", "successStory", "location", "type"];
       const updates = {};
       for (const f of fields) {
-        if (typeof req.body[f] !== "undefined") updates[f] = req.body[f];
+        // Only set fields that the client included (even empty strings allowed)
+        if (Object.prototype.hasOwnProperty.call(req.body, f)) {
+          updates[f] = req.body[f];
+        }
       }
 
-      // Handle optional image replacement.
-      // Since we use .single("image"), req.file is the new image (if any).
-      if (req.file) {
-        const newRelativePath = path.relative(UPLOAD_ROOT, req.file.path).replace(/\\/g, "/");
-        // Clean up old images on disk (hard replace behavior)
+      // Optional image replacement
+      if (req.file?.path) {
+        const newRel = toRelativeFromRoot(req.file.path);
+
+        // Delete old images if any
         if (Array.isArray(existing.images)) {
           for (const rel of existing.images) {
             const abs = path.join(UPLOAD_ROOT, rel);
-            try {
-              if (fs.existsSync(abs)) fs.unlinkSync(abs);
-            } catch (_) {}
+            safeUnlink(abs);
           }
         }
-        updates.images = [newRelativePath];
+
+        // Save new image (single)
+        updates.images = newRel ? [newRel] : [];
       }
 
       // Persist changes
       Object.assign(existing, updates);
       await existing.save();
 
+      // Build public URLs for response
       const imageUrls = generateImageUrls(req, existing.images || []);
 
       return res.status(200).json({
@@ -201,17 +179,15 @@ router.patch(
           successStory: existing.successStory,
           location: existing.location,
           type: existing.type,
-          images: imageUrls, // public URLs
+          images: imageUrls,
         },
       });
     } catch (err) {
       console.error("[testimonial:edit] Error:", err);
-      // Best effort: if error occurred after upload and before save, try to clean up the new file
-      if (req.file) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (_) {}
-      }
+
+      // If an error happened after receiving a new upload, clean that new file
+      if (req.file?.path) safeUnlink(req.file.path);
+
       return res.status(500).json({
         success: false,
         error: "Internal server error",
