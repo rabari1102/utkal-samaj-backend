@@ -72,6 +72,21 @@ router.post("/", upload.single("profilePicture"), async (req, res) => {
 
 /* ------------------------------- TREE ------------------------------- */
 // GET the full team tree (starting from a root SAMITI node)
+// routes/team.js (only the relevant parts)
+
+// --- helpers: robust key->URL (skip on bad types) ---
+async function keyToUrlSafe(key) {
+  try {
+    if (typeof key !== "string") return null;          // skip non-strings
+    const trimmed = key.trim();
+    if (!trimmed) return null;                         // skip empty
+    return USE_PUBLIC ? publicUrl(trimmed) : await getSignedDownloadUrl(trimmed);
+  } catch (_) {
+    return null; // never throw from URL resolution
+  }
+}
+
+// --- GET /tree ---
 router.get("/tree", async (req, res) => {
   try {
     const SAMITI_PARENT_ID = "687386d3d4d688945bf29a22"; // TODO: move to config/env
@@ -80,9 +95,9 @@ router.get("/tree", async (req, res) => {
       const node = await TeamNode.findById(id).lean();
       if (!node) return null;
 
-      // Resolve picture URL from S3 key
-      const picKey = node.profilePicture || null;
-      node.profilePicture = picKey ? await keyToUrl(picKey) : DEFAULT_PROFILE_PIC_PATH;
+      // Resolve picture URL from S3 key safely (skip on any problem)
+      const picKey = node.profilePicture ?? null;
+      node.profilePicture = await keyToUrlSafe(picKey) || DEFAULT_PROFILE_PIC_PATH;
 
       const children = await TeamNode.find({ parent: id })
         .sort({ createdAt: "ascending" })
@@ -101,7 +116,8 @@ router.get("/tree", async (req, res) => {
     res.json({ data: [tree] });
   } catch (err) {
     console.error("[team:tree] Error:", err);
-    res.status(500).json({ error: err.message });
+    // Do not block: return empty data structure on unexpected errors
+    res.status(200).json({ data: [] });
   }
 });
 
