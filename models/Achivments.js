@@ -13,7 +13,7 @@ const achievementSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
-  image: {
+  images: {
     type: String
   },
   category: {

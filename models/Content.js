@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const contentSchema = new mongoose.Schema({
   section: {
@@ -7,30 +7,31 @@ const contentSchema = new mongoose.Schema({
   },
   title: {
     type: String,
-    required: false
+    required: false,
   },
   body: {
     type: String,
-    required: false
+    required: false,
   },
-  image: {
-    type: String
+  images: {
+    type: [String],
+    default: [],
   },
   link: {
-    type: String
+    type: String,
   },
   isActive: {
     type: Boolean,
-    default: false
+    default: false,
   },
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   updatedAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
-module.exports = mongoose.model('Content', contentSchema);
+module.exports = mongoose.model("Content", contentSchema);

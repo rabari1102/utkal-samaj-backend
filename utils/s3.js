@@ -100,7 +100,6 @@ async function uploadBuffer({
     ACL: acl,
     Metadata: metadata,
   });
-  console.log(cmd, "command to be sent to S3");
   
   await s3.send(cmd);
   return { key: Key };
