@@ -20,7 +20,12 @@ const USE_PUBLIC = ACL === "public-read";
 // In-memory uploads (no temp files)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: 25 * 1024 * 1024,  // 25 MB per file
+    files: 50,                   // up to 50 files
+    fieldSize: 50 * 1024 * 1024, // 50 MB for text fields total
+    parts: 200,                  // total parts (files + fields)
+  },
 });
 
 const router = express.Router();
@@ -371,41 +376,79 @@ router.put(
 // -----------------------------
 // GALLERY (multi-image)
 // POST /gallery  (field: images[])
-// -----------------------------
-router.post("/gallery", upload.array("images", 50), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ success: false, error: "No images were uploaded." });
+router.post("/gallery", (req, res, next) => {
+  // run multer first so we can catch MulterError and respond instead of generic 413
+  upload.array("images", 50)(req, res, async (err) => {
+    if (err) {
+      // Multer limit errors -> 413 with details
+      if (err.name === "MulterError" && err.code && err.code.startsWith("LIMIT_")) {
+        return res.status(413).json({
+          success: false,
+          error: "Upload limit exceeded",
+          code: err.code,
+          message: err.message,
+        });
+      }
+      return res.status(400).json({ success: false, error: err.message });
     }
 
-    const keys = [];
-    for (const file of req.files) {
-      const { key } = await uploadBuffer({
-        buffer: file.buffer,
-        contentType: file.mimetype,
-        folder: "gallery",
-        filename: file.originalname,
-        acl: ACL,
-        metadata: { source: "gallery" },
+    try {
+      if (!Array.isArray(req.files) || req.files.length === 0) {
+        return res.status(400).json({ success: false, error: "No images were uploaded." });
+      }
+
+      const allowed = new Set([
+        "image/jpeg", "image/jpg", "image/png", "image/webp",
+        "image/gif", "image/bmp", "image/tiff"
+      ]);
+
+      const uploads = [];
+      for (const file of req.files) {
+        if (!allowed.has(file.mimetype)) continue;
+        const { key } = await uploadBuffer({
+          buffer: file.buffer,
+          contentType: file.mimetype,
+          folder: "gallery",
+          filename: file.originalname,
+          acl: ACL,
+          metadata: { source: "gallery" },
+        });
+        uploads.push({
+          key,
+          contentType: file.mimetype,
+          size: file.size,
+          name: file.originalname,
+        });
+      }
+
+      if (uploads.length === 0) {
+        return res.status(400).json({ success: false, error: "No valid image files to upload." });
+      }
+
+      const urls = await Promise.all(uploads.map(u => keyToUrl(u.key)));
+      const files = uploads.map((u, i) => ({
+        key: u.key,
+        url: urls[i],
+        name: u.name,
+        size: u.size,
+        contentType: u.contentType,
+      }));
+
+      return res.status(200).json({
+        success: true,
+        message: "Images uploaded successfully to the gallery",
+        files,
       });
-      keys.push(key);
+    } catch (error) {
+      console.error("Gallery image upload error:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Server error",
+        message: error?.message,
+      });
     }
-
-    // If you store gallery entries in Mongo, you can persist `keys` here:
-    // await Gallery.create({ images: keys, ... });
-
-    const urls = await keysToUrls(keys);
-    const files = keys.map((k, i) => ({ key: k, url: urls[i] }));
-
-    res.status(200).json({
-      success: true,
-      message: "Images uploaded successfully to the gallery",
-      files,
-    });
-  } catch (error) {
-    console.error("Gallery image upload error:", error);
-    res.status(500).json({ success: false, error: "Server error" });
-  }
+  });
 });
+
 
 module.exports = router;

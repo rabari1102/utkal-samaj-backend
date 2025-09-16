@@ -31,7 +31,8 @@ app.set('trust proxy', 'loopback');
 
 // Security Headers
 app.use(helmet());
-
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ extended: true, limit: "500mb" }));
 // CORS Configuration
 const corsOptions = {
   origin: '*',
@@ -41,10 +42,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
-
-// Request Body Limit
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(compression());
 app.use(mongoSanitize());

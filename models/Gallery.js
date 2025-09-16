@@ -5,10 +5,10 @@ const gallerySchema = new mongoose.Schema({
     type: String,
     required: false
   },
-  images: [{
-    url: String,
-    caption: String
-  }],
+  images: {
+    type: [String],
+    default: [],
+  },
   isActive: {
     type: Boolean,
     default: true
