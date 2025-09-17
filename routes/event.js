@@ -1,24 +1,28 @@
 // routes/events.js
-const express = require('express');
-const mongoose = require('mongoose');
-const { body, validationResult } = require('express-validator');
+const express = require("express");
+const mongoose = require("mongoose");
+const { body, validationResult } = require("express-validator");
 
-const Event = require('../models/Event');
-const EventRegistration = require('../models/eventRegistration');
-const { createPaymentOrder } = require('../services/paymentService');
+const Event = require("../models/Event");
+const EventRegistration = require("../models/eventRegistration");
+const { createPaymentOrder } = require("../services/paymentService");
 
 // S3 helpers
-const { getSignedDownloadUrl, publicUrl, deleteObject } = require('../utils/s3');
+const {
+  getSignedDownloadUrl,
+  publicUrl,
+  deleteObject,
+} = require("../utils/s3");
 
 const router = express.Router();
 
 // Config: decide signed vs public URLs
-const ACL = process.env.S3_OBJECT_ACL || 'private';
-const USE_PUBLIC = ACL === 'public-read';
+const ACL = process.env.S3_OBJECT_ACL || "private";
+const USE_PUBLIC = ACL === "public-read";
 
 // Helpers
 async function keyToUrl(key) {
-  if (!key || typeof key !== 'string') return null;
+  if (!key || typeof key !== "string") return null;
   return USE_PUBLIC ? publicUrl(key) : await getSignedDownloadUrl(key);
 }
 async function keysToUrls(keys = []) {
@@ -31,7 +35,7 @@ async function keysToUrls(keys = []) {
  * @route GET /getAllEvents
  * @desc Get all events (latest first)
  */
-router.get('/getAllEvents', async (_req, res) => {
+router.get("/getAllEvents", async (_req, res) => {
   try {
     const events = await Event.find().sort({ eventDate: -1 });
 
@@ -44,8 +48,8 @@ router.get('/getAllEvents', async (_req, res) => {
 
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error('Error fetching events:', error);
-    res.status(500).json({ success: false, error: 'Server error' });
+    console.error("Error fetching events:", error);
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
@@ -53,7 +57,7 @@ router.get('/getAllEvents', async (_req, res) => {
  * @route GET /past
  * @desc Get all past events (already occurred)
  */
-router.get('/past', async (_req, res) => {
+router.get("/past", async (_req, res) => {
   try {
     const events = await Event.find({
       eventDate: { $lt: new Date() },
@@ -69,8 +73,8 @@ router.get('/past', async (_req, res) => {
 
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error('Get past events error:', error);
-    res.status(500).json({ success: false, error: 'Server error' });
+    console.error("Get past events error:", error);
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
@@ -78,13 +82,13 @@ router.get('/past', async (_req, res) => {
  * @route GET /getEventById/:id
  * @desc Get single event by ID
  */
-router.get('/getEventById/:id', async (req, res) => {
+router.get("/getEventById/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
     const event = await Event.findById(id);
     if (!event) {
-      return res.status(404).json({ success: false, error: 'Event not found' });
+      return res.status(404).json({ success: false, error: "Event not found" });
     }
 
     const data = {
@@ -94,8 +98,8 @@ router.get('/getEventById/:id', async (req, res) => {
 
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error('Error fetching event by ID:', error);
-    res.status(500).json({ success: false, error: 'Server error' });
+    console.error("Error fetching event by ID:", error);
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
@@ -104,14 +108,17 @@ router.get('/getEventById/:id', async (req, res) => {
  * @desc Register user for an event
  */
 router.post(
-  '/:id/register',
+  "/:id/register",
   [
-    body('participantName').trim().isLength({ min: 2 }).withMessage('Name required'),
-    body('phoneNumber').isMobilePhone().withMessage('Invalid phone'),
-    body('email').optional().isEmail().withMessage('Invalid email'),
-    body('numberOfParticipants')
+    body("participantName")
+      .trim()
+      .isLength({ min: 2 })
+      .withMessage("Name required"),
+    body("phoneNumber").isMobilePhone().withMessage("Invalid phone"),
+    body("email").optional().isEmail().withMessage("Invalid email"),
+    body("numberOfParticipants")
       .isInt({ min: 1, max: 10 })
-      .withMessage('1–10 participants allowed'),
+      .withMessage("1–10 participants allowed"),
   ],
   async (req, res) => {
     try {
@@ -121,22 +128,28 @@ router.post(
       }
 
       const { id } = req.params;
-      const { participantName, phoneNumber, email, numberOfParticipants } = req.body;
+      const { participantName, phoneNumber, email, numberOfParticipants } =
+        req.body;
 
       const event = await Event.findById(id);
       if (!event || !event.isActive) {
-        return res.status(404).json({ success: false, error: 'Event not found' });
+        return res
+          .status(404)
+          .json({ success: false, error: "Event not found" });
       }
 
       if (new Date(event.eventDate) < new Date()) {
-        return res.status(400).json({ success: false, error: 'Event registration has ended' });
+        return res
+          .status(400)
+          .json({ success: false, error: "Event registration has ended" });
       }
 
       if (
         event.maxParticipants &&
-        event.registeredCount + Number(numberOfParticipants) > event.maxParticipants
+        event.registeredCount + Number(numberOfParticipants) >
+          event.maxParticipants
       ) {
-        return res.status(400).json({ success: false, error: 'Event is full' });
+        return res.status(400).json({ success: false, error: "Event is full" });
       }
 
       const registration = new EventRegistration({
@@ -156,17 +169,17 @@ router.post(
         );
 
         registration.paymentId = paymentOrder.id;
-        registration.paymentStatus = 'pending';
+        registration.paymentStatus = "pending";
         await registration.save();
 
         return res.status(201).json({
           success: true,
-          message: 'Registration created. Please complete payment.',
+          message: "Registration created. Please complete payment.",
           registrationId: registration._id,
           paymentOrder,
         });
       } else {
-        registration.paymentStatus = 'completed';
+        registration.paymentStatus = "completed";
         await registration.save();
 
         event.registeredCount += Number(numberOfParticipants);
@@ -174,13 +187,13 @@ router.post(
 
         return res.status(201).json({
           success: true,
-          message: 'Registration successful',
+          message: "Registration successful",
           registrationId: registration._id,
         });
       }
     } catch (error) {
-      console.error('Event registration error:', error);
-      res.status(500).json({ success: false, error: 'Server error' });
+      console.error("Event registration error:", error);
+      res.status(500).json({ success: false, error: "Server error" });
     }
   }
 );
@@ -189,17 +202,21 @@ router.post(
  * @route DELETE /events/:id
  * @desc Delete an event and its S3 images
  */
-router.delete('/events/:id', async (req, res) => {
+router.delete("/events/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid event ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid event ID" });
     }
 
     const event = await Event.findById(id);
     if (!event) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
     }
 
     // Delete associated S3 objects (best-effort)
@@ -208,7 +225,10 @@ router.delete('/events/:id', async (req, res) => {
         try {
           await deleteObject(key);
         } catch (e) {
-          console.warn(`[event:delete] Failed to delete S3 object "${key}":`, e?.message || e);
+          console.warn(
+            `[event:delete] Failed to delete S3 object "${key}":`,
+            e?.message || e
+          );
         }
       });
       await Promise.allSettled(deletions);
@@ -218,13 +238,102 @@ router.delete('/events/:id', async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Event deleted successfully',
+      message: "Event deleted successfully",
     });
   } catch (error) {
-    console.error('Event deletion error:', error);
+    console.error("Event deletion error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
+});
+
+// DELETE /events/:id/images
+// Body: { "url": "https://<bucket>.s3.<region>.amazonaws.com/path/to/file.jpg?X-Amz-..." }
+
+router.delete("/events/:id/images", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { url } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid event ID" });
+    }
+    if (typeof url !== "string" || url.trim() === "") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Image URL is required" });
+    }
+
+    const event = await Event.findById(id);
+    if (!event) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+
+    // 1) Derive the S3 object key from the incoming URL.
+    //    Works for virtual-hosted-style, path-style, CloudFront, and presigned URLs.
+    const key = extractS3KeyFromUrl(url, {
+      bucket: process.env.S3_BUCKET,
+      cloudfrontDomain: process.env.CLOUDFRONT_DOMAIN, // optional
+    });
+
+    if (!key) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Could not parse S3 key from URL" });
+    }
+
+    // 2) Best-effort delete on S3
+    let s3Deleted = false;
+    try {
+      await deleteObject(key); // your existing helper
+      s3Deleted = true;
+    } catch (e) {
+      console.warn(
+        `[event:image:delete] Failed to delete S3 object "${key}":`,
+        e?.message || e
+      );
+    }
+
+    // 3) Remove from DB if stored (support either key or full URL being stored)
+    //    If your Event schema has `images: string[]`
+    const beforeCount = Array.isArray(event.images) ? event.images.length : 0;
+
+    const updated = await Event.findByIdAndUpdate(
+      id,
+      { $pull: { images: { $in: [key, url] } } },
+      { new: true }
+    );
+
+    const afterCount = Array.isArray(updated?.images)
+      ? updated.images.length
+      : beforeCount;
+    const dbRemoved = afterCount < beforeCount;
+
+    return res.status(200).json({
+      success: true,
+      message:
+        dbRemoved || s3Deleted
+          ? "Image deletion processed"
+          : "Nothing changed (image not found in DB and S3 delete may have failed)",
+      details: {
+        s3Deleted,
+        dbRemoved,
+        key,
+      },
+      event: updated,
+    });
+  } catch (error) {
+    console.error("Event image deletion error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
       message: error.message,
     });
   }
