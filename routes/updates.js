@@ -7,6 +7,7 @@ const multer = require("multer");
 const {
   uploadBuffer,
   deleteObject,
+  deleteKeysFromS3,
   getSignedDownloadUrl,
   publicUrl,
 } = require("../utils/s3");
@@ -96,17 +97,6 @@ router.post(
   }
 );
 
-
-// form-data supported:
-// - keepImages (JSON string, comma-separated string, array; entries can be keys or URLs)
-// - images[] (files)
-// form-data:
-//   - title, content (optional)
-//   - deleteImages  (JSON array | comma-separated | array)  <-- keys or URLs to remove
-//   - images[]      (files to upload)
-// form-data:
-//   - title, content (optional)
-//   - images[] (files)  --> if present, REPLACE ALL old images automatically
 router.patch("/:id", upload.array("images", 12), async (req, res) => {
   const logPrefix = "[updates:edit]";
   try {
@@ -184,11 +174,6 @@ router.patch("/:id", upload.array("images", 12), async (req, res) => {
   }
 });
 
-
-
-// DELETE an update
-// - Removes the document
-// - Deletes all associated S3 images (best-effort cleanup)
 router.delete("/:id", async (req, res) => {
   const logPrefix = "[updates:delete]";
   try {
@@ -230,5 +215,43 @@ router.delete("/:id", async (req, res) => {
     });
   }
 });
+
+// GET /updates
+router.get("/", async (req, res) => {
+  try {
+    // Fetch all docs (no pagination, no sorting)
+    const docs = await Updates.find();
+
+    // Convert keys -> URLs
+    const data = [];
+    for (const d of docs) {
+      const imageKeys = Array.isArray(d.images) ? d.images : [];
+      const imageUrls = await keysToUrls(imageKeys);
+
+      data.push({
+        id: d._id,
+        title: d.title,
+        content: d.content,
+        images: imageUrls, // return URLs
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Updates fetched successfully",
+      data,
+    });
+  } catch (err) {
+    console.error("[updates:list] Error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: err.message,
+    });
+  }
+});
+
 
 module.exports = router;
