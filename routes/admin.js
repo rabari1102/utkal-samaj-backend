@@ -8,7 +8,7 @@ const Content = require("../models/Content");
 const Event = require("../models/Event");
 const TeamNode = require("../models/Team");
 const Gallery = require("../models/Gallery");
-const News = require("../models/news");
+const News = require("../models/updates");
 const Achievement = require("../models/Achivments");
 
 const { uploadBuffer, deleteObject, getSignedDownloadUrl, publicUrl } = require("../utils/s3");

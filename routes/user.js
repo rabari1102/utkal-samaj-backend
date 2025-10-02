@@ -19,17 +19,17 @@ router.get("/members", async (req, res) => {
     const total = await User.countDocuments({
       isApproved: true,
       isActive: true,
-      role: role,
+      role: "member",
       deletedAt: null,
     });
 
     const members = await User.find({
       isApproved: true,
       isActive: true,
-      role: role,
+      role: "member",
       deletedAt: null,
     })
-      .select("firstName lastName bloodGroup")
+      .select("firstName lastName fatherName phoneNumber bloodGroup")
       .sort({ firstName: 1 })
       .skip(skip)
       .limit(limit);
@@ -256,17 +256,9 @@ router.get("/bloodGroup-list", async (req, res) => {
   }
 });
 
-// Delete single donor by ID
-router.delete("/user/:id", async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params; // Validate ObjectId format
-
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format",
-      });
-    }
 
     const deleteduser = await User.findByIdAndDelete(id);
 
@@ -316,26 +308,26 @@ router.put(
   ],
   async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
       const { id } = req.params;
+      console.log(id, "ididididididid");
+      console.log(req.body, "req.bodyreq.bodyreq.body");
+
       const updates = req.body; // Check if the user ID is a valid ObjectId
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.log(updates, "updatesupdatesupdates");
+     // Validation for empty updates
+      if (!updates || Object.keys(updates).length === 0) {
         return res.status(400).json({
-          message: "Invalid user ID",
+          message: "No updates provided. Please provide at least one field to update.",
         });
-      } // Check for uniqueness of email and phone number if they are being updated
-
+      }
       if (updates.email) {
         const existingUserByEmail = await User.findOne({
           email: updates.email,
           _id: { $ne: id }, // Exclude the current user from the check
           deletedAt: null,
         });
+        console.log(existingUserByEmail, "existingUserByEmailemail");
+
         if (existingUserByEmail) {
           return res.status(400).json({
             message: "User already exists with this email address",
@@ -349,6 +341,8 @@ router.put(
           _id: { $ne: id }, // Exclude the current user from the check
           deletedAt: null,
         });
+        console.log(existingUserByPhone, "existingUserByPhonephone");
+
         if (existingUserByPhone) {
           return res.status(400).json({
             message: "User already exists with this phone number",
@@ -361,6 +355,7 @@ router.put(
         { $set: updates },
         { new: true, runValidators: true }
       );
+      console.log(user, "useruser");
 
       if (!user) {
         return res.status(404).json({

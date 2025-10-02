@@ -82,7 +82,7 @@ app.use('/api/events', require('./routes/event'));
 app.use('/api/donations', require('./routes/Donation'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/gallery', require('./routes/gallery'));
-app.use('/api/news', require('./routes/news'));
+app.use('/api/updates', require('./routes/updates'));
 app.use('/api/testimonial', require('./routes/testimonial'));
 
 // Health Check

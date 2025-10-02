@@ -31,6 +31,43 @@ async function keysToUrls(keys = []) {
   return out;
 }
 
+// --- Helper: extract key from S3/CloudFront URL ---
+function extractS3KeyFromUrl(inputUrl, opts = {}) {
+  const { bucket, cloudfrontDomain } = opts;
+  try {
+    const u = new URL(inputUrl);
+    // strip query & leading slash; decode in case of spaces etc.
+    let pathname = decodeURIComponent(u.pathname || '');
+    if (pathname.startsWith('/')) pathname = pathname.slice(1);
+
+    const host = (u.host || '').toLowerCase();
+
+    // CloudFront domain
+    if (cloudfrontDomain && host === cloudfrontDomain.toLowerCase()) {
+      return pathname;
+    }
+
+    // Virtual-hosted-style: <bucket>.s3.<region>.amazonaws.com/<key>
+    if (bucket && host.startsWith(bucket.toLowerCase() + '.s3')) {
+      return pathname;
+    }
+
+    // Path-style: s3.<region>.amazonaws.com/<bucket>/<key>
+    if (host.includes('amazonaws.com')) {
+      if (pathname.startsWith(bucket + '/')) {
+        return pathname.slice(bucket.length + 1);
+      }
+      return pathname;
+    }
+
+    // Fallback (custom CDN, etc.)
+    return pathname;
+  } catch {
+    return null;
+  }
+}
+
+
 /**
  * @route GET /getAllEvents
  * @desc Get all events (latest first)
@@ -253,16 +290,12 @@ router.delete("/events/:id", async (req, res) => {
 // DELETE /events/:id/images
 // Body: { "url": "https://<bucket>.s3.<region>.amazonaws.com/path/to/file.jpg?X-Amz-..." }
 
-router.delete("/events/:id/images", async (req, res) => {
+router.delete("/:id/images", async (req, res) => {
   try {
     const { id } = req.params;
     const { url } = req.body;
+console.log(url);
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid event ID" });
-    }
     if (typeof url !== "string" || url.trim() === "") {
       return res
         .status(400)
@@ -276,11 +309,8 @@ router.delete("/events/:id/images", async (req, res) => {
         .json({ success: false, message: "Event not found" });
     }
 
-    // 1) Derive the S3 object key from the incoming URL.
-    //    Works for virtual-hosted-style, path-style, CloudFront, and presigned URLs.
     const key = extractS3KeyFromUrl(url, {
       bucket: process.env.S3_BUCKET,
-      cloudfrontDomain: process.env.CLOUDFRONT_DOMAIN, // optional
     });
 
     if (!key) {
