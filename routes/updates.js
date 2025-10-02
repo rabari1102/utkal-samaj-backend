@@ -7,11 +7,10 @@ const multer = require("multer");
 const {
   uploadBuffer,
   deleteObject,
-  deleteKeysFromS3,
   getSignedDownloadUrl,
   publicUrl,
 } = require("../utils/s3");
-
+const { S3Client, DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 const router = express.Router();
 
 // -------------------- URL helpers --------------------
@@ -27,6 +26,10 @@ const upload = multer({
   },
 });
 
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+});
+const BUCKET = process.env.S3_BUCKET;
 async function keyToUrl(key) {
   if (!key) return null;
   return USE_PUBLIC ? publicUrl(key) : await getSignedDownloadUrl(key);
@@ -38,6 +41,43 @@ async function keysToUrls(keys = []) {
   }
   return out;
 }
+
+async function deleteKeysFromS3(keys = []) {
+  if (!Array.isArray(keys) || keys.length === 0) {
+    return { deleted: [], errors: [] };
+  }
+
+  const results = { deleted: [], errors: [] };
+
+  // S3 DeleteObjects caps at 1000 objects/request.
+  for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000);
+
+    try {
+      const resp = await s3.send(new DeleteObjectsCommand({
+        Bucket: BUCKET,
+        Delete: { Objects: chunk.map(Key => ({ Key })) },
+      }));
+
+      if (Array.isArray(resp.Deleted)) {
+        results.deleted.push(...resp.Deleted.map(d => d.Key).filter(Boolean));
+      }
+      if (Array.isArray(resp.Errors) && resp.Errors.length) {
+        results.errors.push(...resp.Errors.map(e => ({
+          Key: e.Key, Code: e.Code, Message: e.Message
+        })));
+      }
+    } catch (err) {
+      // If the whole batch fails, record individual keys with a generic error
+      results.errors.push(...chunk.map(Key => ({
+        Key, Code: "BatchError", Message: err.message
+      })));
+    }
+  }
+
+  return results;
+}
+
 
 router.post(
   "/",
@@ -97,7 +137,7 @@ router.post(
   }
 );
 
-router.patch("/:id", upload.array("images", 12), async (req, res) => {
+router.put("/:id", upload.array("images", 12), async (req, res) => {
   const logPrefix = "[updates:edit]";
   try {
     const { id } = req.params;
@@ -229,7 +269,7 @@ router.get("/", async (req, res) => {
       const imageUrls = await keysToUrls(imageKeys);
 
       data.push({
-        id: d._id,
+        _id: d._id,
         title: d.title,
         content: d.content,
         images: imageUrls, // return URLs
