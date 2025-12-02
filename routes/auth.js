@@ -12,47 +12,84 @@ const router = express.Router();
 router.post(
   "/generate-otp",
   [
-    body("email").isEmail().withMessage("Valid email address required"), // Changed from phoneNumber to email
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("A valid email address is required"),
   ],
   async (req, res) => {
+    console.log("[Generate OTP] Incoming request:", req.body);
+
+    // Validate input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.warn("[Generate OTP] Validation failed:", errors.array());
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input",
+        errors: errors.array(),
+      });
+    }
+
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
+      const { email } = req.body;
 
-      const { email } = req.body; // Changed from phoneNumber to email
-
-      // Check if user exists and is approved
-      const user = await User.findOne({ email, deletedAt: null }); // Changed from phoneNumber to email
+      // Find existing user
+      const user = await User.findOne({ email, deletedAt: null }).lean();
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        console.warn(`[Generate OTP] User not found for email: ${email}`);
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
       }
 
       if (!user.isApproved) {
-        return res.status(403).json({ message: "Account not approved yet" });
+        console.warn(`[Generate OTP] User not approved: ${email}`);
+        return res.status(403).json({
+          success: false,
+          message: "Account not approved yet",
+        });
       }
 
       // Generate OTP
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // Delete existing OTP
-      await OTP.deleteMany({ email }); // Changed from phoneNumber to email
+      // Remove old OTPs
+      await OTP.deleteMany({ email }).catch((err) => {
+        console.error("[Generate OTP] Failed to delete previous OTPs:", err);
+      });
 
       // Save new OTP
-      await new OTP({
-        email, // Changed from phoneNumber to email
-        otp,
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
-      }).save();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await OTP.create({ email, otp, expiresAt });
 
-      // Send OTP via Email
-      await sendOTP(email, otp, user); // Changed from phoneNumber to email
+      // Try sending the OTP by email
+      try {
+        await sendOTP(email, otp, user);
+      } catch (emailErr) {
+        console.error("[Generate OTP] Email sending failed:", emailErr);
 
-      res.json({ message: "OTP sent successfully to your email" });
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send OTP email. Please try again.",
+        });
+      }
+
+      console.log(`[Generate OTP] OTP sent successfully to ${email}`);
+
+      return res.json({
+        success: true,
+        message: "OTP sent successfully to your email",
+      });
+
     } catch (error) {
-      console.error("Generate OTP error:", error);
-      res.status(500).json({ error: "Server error" });
+      console.error("[Generate OTP] Unexpected server error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Something went wrong on the server",
+      });
     }
   }
 );
