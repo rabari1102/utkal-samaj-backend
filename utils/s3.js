@@ -9,6 +9,7 @@ const {
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const path = require("path");
 const crypto = require("crypto");
+const sharp = require("sharp");
 
 /** ---- ENV ---- */
 const BUCKET = process.env.S3_BUCKET;
@@ -89,13 +90,47 @@ async function uploadBuffer({
   if (!Buffer.isBuffer(buffer)) {
     throw new Error("[s3] uploadBuffer: 'buffer' must be a Buffer");
   }
+
+  // Compress images to reduce size
+  let processedBuffer = buffer;
+  if (contentType && contentType.startsWith('image/')) {
+    try {
+      const image = sharp(buffer);
+      const metadata = await image.metadata();
+      
+      // Resize if too large
+      let resizedImage = image;
+      if (metadata.width > 1920) {
+        resizedImage = image.resize(1920, null, { withoutEnlargement: true });
+      }
+      
+      if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
+        processedBuffer = await resizedImage
+          .jpeg({ quality: 80, progressive: true })
+          .toBuffer();
+      } else if (contentType === 'image/png') {
+        processedBuffer = await resizedImage
+          .png({ compressionLevel: 6 })
+          .toBuffer();
+      } else if (contentType === 'image/webp') {
+        processedBuffer = await resizedImage
+          .webp({ quality: 80 })
+          .toBuffer();
+      }
+      // For other formats, keep as is
+    } catch (error) {
+      console.warn("[s3] Image compression failed, uploading original:", error.message);
+      processedBuffer = buffer;
+    }
+  }
+
   const Key = makeKey(folder, filename);
   console.log(Key, "will be uploaded to S3");
   
   const cmd = new PutObjectCommand({
     Bucket: BUCKET,
     Key,
-    Body: buffer,
+    Body: processedBuffer,
     ContentType: contentType || "application/octet-stream",
     ACL: acl,
     Metadata: metadata,
