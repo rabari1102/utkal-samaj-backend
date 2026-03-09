@@ -158,11 +158,24 @@ function publicUrl(key) {
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
 }
 
+async function getSignedUploadUrl(folder, filename, contentType) {
+  const Key = makeKey(folder, filename);
+  const cmd = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key,
+    ContentType: contentType || "application/octet-stream",
+    ACL: DEFAULT_ACL,
+  });
+  const url = await getSignedUrl(s3, cmd, { expiresIn: SIGNED_TTL });
+  return { key: Key, url };
+}
+
 module.exports = {
   initS3,
   uploadBuffer,
   deleteObject,
   getSignedDownloadUrl,
+  getSignedUploadUrl,
   publicUrl,
   getRegion: () => REGION,
   getBucket: () => BUCKET,

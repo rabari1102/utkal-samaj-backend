@@ -71,6 +71,24 @@ router.post(
           imageKeys.push(key);
         }
       }
+      
+      // Support pre-uploaded images (from presigned URL via frontend bypassing Vercel limits)
+      if (req.body.uploadedImages) {
+        try {
+          let parsed = req.body.uploadedImages;
+          if (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch(_) { parsed = parsed.split(',').map(s=>s.trim()).filter(Boolean); }
+          }
+          if (Array.isArray(parsed)) {
+            imageKeys.push(...parsed);
+          } else if (typeof parsed === 'string') {
+            imageKeys.push(parsed);
+          }
+        } catch(e) {
+          console.warn('[content:create] Failed parsing uploadedImages', e);
+        }
+      }
+
 
       const doc = await Content.create({
         section,
@@ -380,6 +398,17 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
         uploadedKeys.push(key);
       }
     }
+    
+    // Support pre-uploaded new URLs/keys from presigned URL bypass
+    if (req.body.uploadedImages) {
+      const parsedNew = parseMaybeJson(req.body.uploadedImages);
+      if (Array.isArray(parsedNew)) {
+        uploadedKeys.push(...parsedNew.map(urlToKey).filter(Boolean));
+      } else if (typeof parsedNew === 'string') {
+        uploadedKeys.push(urlToKey(parsedNew));
+      }
+    }
+
 
     // 4) Final set = keepKeys ∪ uploadedKeys (dedup)
     const finalSet = Array.from(new Set([...(keepKeys || []), ...uploadedKeys]));
