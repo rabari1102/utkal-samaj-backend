@@ -21,10 +21,10 @@ const USE_PUBLIC = ACL === "public-read";
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 25 * 1024 * 1024,  // 25 MB per file
+    fileSize: 50 * 1024 * 1024,  // 50 MB per file
     files: 50,                   // up to 50 files
-    fieldSize: 50 * 1024 * 1024, // 50 MB for text fields total
-    parts: 200,                  // total parts (files + fields)
+    fieldSize: 100 * 1024 * 1024, // 100 MB for text fields total
+    parts: 300,                  // total parts (files + fields)
   },
 });
 
@@ -33,7 +33,12 @@ const router = express.Router();
 // Helper: turn S3 key(s) into URL(s)
 async function keyToUrl(key) {
   if (!key) return null;
-  return USE_PUBLIC ? publicUrl(key) : await getSignedDownloadUrl(key);
+  try {
+    return USE_PUBLIC ? publicUrl(key) : await getSignedDownloadUrl(key);
+  } catch (e) {
+    console.warn("Failed to generate URL for key:", key, e.message);
+    return null;
+  }
 }
 async function keysToUrls(keys = []) {
   const urls = [];
@@ -206,7 +211,22 @@ router.put(
 // -----------------------------
 router.post(
   "/events",
-  upload.array("images", 50),
+  (req, res, next) => {
+    upload.array("images", 50)(req, res, (err) => {
+      if (err) {
+        if (err.name === "MulterError" && err.code && err.code.startsWith("LIMIT_")) {
+          return res.status(413).json({
+            success: false,
+            error: "Upload limit exceeded",
+            code: err.code,
+            message: err.message,
+          });
+        }
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      next();
+    });
+  },
   [
     body("title").trim().isLength({ min: 3 }).withMessage("Title is too short"),
     body("description").trim().isLength({ min: 10 }).withMessage("Description is too short"),
@@ -247,6 +267,11 @@ router.post(
 
       await event.save();
 
+      const imageUrls = await keysToUrls(event.images);
+      const validIndices = imageUrls.map((url, i) => url ? i : -1).filter(i => i !== -1);
+      const validImages = validIndices.map(i => event.images[i]);
+      const validImageUrls = validIndices.map(i => imageUrls[i]);
+
       res.status(201).json({
         success: true,
         message: "Event created successfully",
@@ -256,7 +281,8 @@ router.post(
           description: event.description,
           eventDate: event.eventDate,
           location: event.location,
-          images: await keysToUrls(event.images),
+          images: validImages,
+          imageUrls: validImageUrls,
         }
       });
     } catch (error) {
@@ -277,7 +303,22 @@ router.post(
 // -----------------------------
 router.put(
   "/eventUpdate/:id",
-  upload.array("images", 50),
+  (req, res, next) => {
+    upload.array("images", 50)(req, res, (err) => {
+      if (err) {
+        if (err.name === "MulterError" && err.code && err.code.startsWith("LIMIT_")) {
+          return res.status(413).json({
+            success: false,
+            error: "Upload limit exceeded",
+            code: err.code,
+            message: err.message,
+          });
+        }
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      next();
+    });
+  },
   [
     body("title").optional().trim().isLength({ min: 3 }).withMessage("Title is too short"),
     body("description").optional().trim().isLength({ min: 10 }).withMessage("Description is too short"),
@@ -293,6 +334,9 @@ router.put(
 
       const eventId = req.params.id;
       const updates = req.body;
+
+      console.log("Updating event", eventId, "with updates:", updates);
+      console.log("Files received:", req.files ? req.files.length : 0);
 
       if (!eventId.match(/^[0-9a-fA-F]{24}$/)) {
         return res.status(400).json({ success: false, error: "Invalid event ID format" });
@@ -330,15 +374,19 @@ router.put(
       // Add newly uploaded images
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
-          const { key } = await uploadBuffer({
-            buffer: file.buffer,
-            contentType: file.mimetype,
-            folder: "events",
-            filename: file.originalname,
-            acl: ACL,
-            metadata: { eventId },
-          });
-          event.images.push(key);
+          try {
+            const { key } = await uploadBuffer({
+              buffer: file.buffer,
+              contentType: file.mimetype,
+              folder: "events",
+              filename: file.originalname,
+              acl: ACL,
+              metadata: { eventId },
+            });
+            event.images.push(key);
+          } catch (error) {
+            console.error("Failed to upload new image:", file.originalname, error);
+          }
         }
       }
 
@@ -349,6 +397,11 @@ router.put(
         try { await deleteObject(k); } catch (e) { console.warn("S3 delete failed:", e); }
       }
 
+      const imageUrls = await keysToUrls(event.images);
+      const validIndices = imageUrls.map((url, i) => url ? i : -1).filter(i => i !== -1);
+      const validImages = validIndices.map(i => event.images[i]);
+      const validImageUrls = validIndices.map(i => imageUrls[i]);
+
       res.status(200).json({
         success: true,
         message: "Event updated successfully",
@@ -358,7 +411,8 @@ router.put(
           description: event.description,
           eventDate: event.eventDate,
           location: event.location,
-          images: await keysToUrls(event.images),
+          images: validImages,
+          imageUrls: validImageUrls,
         }
       });
 

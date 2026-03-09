@@ -16,11 +16,11 @@ const donationSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  paymentId: {
+  paymentId: { // Stores the Razorpay ORDER ID
     type: String,
     required: true
   },
-  paymentStatus: {
+  paymentStatus: { // Record status: 'pending', 'completed', 'failed'
     type: String,
     enum: ['pending', 'completed', 'failed'],
     default: 'pending'
@@ -32,7 +32,7 @@ const donationSchema = new mongoose.Schema({
   nextReminderDate: {
     type: Date
   },
-  receiptUrl: {
+  receiptUrl: { // Stores the path/URL of the generated receipt
     type: String
   }
 });
