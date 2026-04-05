@@ -318,178 +318,141 @@ router.patch(
 router.put("/:id", upload.array("images", 12), async (req, res) => {
   try {
     const { id } = req.params;
+
     const existing = await Content.findById(id);
     if (!existing) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Content not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Content not found",
+      });
     }
 
-    // 1) Update only provided scalar fields
+    // ==============================
+    // 1. Update normal fields
+    // ==============================
     const fields = ["section", "title", "body", "link"];
-    for (const f of fields) {
-      if (Object.prototype.hasOwnProperty.call(req.body, f)) {
+    fields.forEach((f) => {
+      if (req.body[f] !== undefined) {
         existing[f] = req.body[f];
       }
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body, "isActive")) {
+    });
+
+    if (req.body.isActive !== undefined) {
       const raw = req.body.isActive;
       existing.isActive =
         typeof raw === "boolean"
           ? raw
-          : typeof raw === "string"
-            ? ["true", "1", "yes", "on"].includes(raw.toLowerCase())
-            : Boolean(raw);
+          : ["true", "1", "yes"].includes(String(raw).toLowerCase());
     }
 
-    // Helpers
-    const CLOUDFRONT_URL = process.env.CLOUDFRONT_URL?.replace(/\/+$/, "");
-    const BUCKET = process.env.S3_BUCKET;
-
-    const parseMaybeJson = (val) => {
-      if (val == null) return undefined;
+    // ==============================
+    // 2. Helpers
+    // ==============================
+    const parseArray = (val) => {
+      if (!val) return [];
       if (Array.isArray(val)) return val;
-      if (typeof val === "string") {
-        try {
-          return JSON.parse(val);
-        } catch (_) {
-          /* not JSON */
-        }
-        return val
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-      return val;
-    };
 
-    // Convert URL -> key (supports CloudFront or S3 URL forms)
-    const urlToKey = (u) => {
-      if (!u || typeof u !== "string") return u;
       try {
-        // If it’s already a relative key like "content/abc.png"
-        if (!/^https?:\/\//i.test(u)) return u.replace(/^\/+/, "");
-
-        const url = new URL(u);
-        const host = url.host;
-
-        // CloudFront/custom CDN, e.g. https://cdn.example.com/content/abc.png
-        if (CLOUDFRONT_URL && u.startsWith(CLOUDFRONT_URL)) {
-          return decodeURIComponent(
-            u.substring(
-              CLOUDFRONT_URL.length + (CLOUDFRONT_URL.endsWith("/") ? 0 : 1),
-            ),
-          );
-        }
-
-        // Virtual-hosted–style S3: https://<bucket>.s3.amazonaws.com/<key>
-        const vh = host.match(/^([^.]+)\.s3(?:-[^.]+)?\.amazonaws\.com$/i);
-        if (vh) {
-          const bucketInUrl = vh[1];
-          if (!BUCKET || BUCKET === bucketInUrl) {
-            return decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-          }
-        }
-
-        // Path-style S3: https://s3.amazonaws.com/<bucket>/<key> or region variant
-        const pathStyle = url.pathname.split("/").filter(Boolean);
-        if (
-          pathStyle.length >= 2 &&
-          (host.startsWith("s3.") || host === "s3.amazonaws.com")
-        ) {
-          const [, ...rest] = pathStyle; // drop bucket
-          return decodeURIComponent(rest.join("/"));
-        }
-
-        // Fallback: try pathname as key
-        return decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+        return JSON.parse(val);
       } catch {
-        return u;
+        return val.split(",").map((v) => v.trim());
       }
     };
 
-    // 2) Parse list of images the client wants to KEEP (keys or URLs)
-    //    We support keepImages, existingImages, or imagesToKeep for flexibility.
-    const keepRaw =
-      parseMaybeJson(req.body.keepImages) ??
-      parseMaybeJson(req.body.existingImages) ??
-      parseMaybeJson(req.body.imagesToKeep);
+    const urlToKey = (url) => {
+      if (!url) return null;
 
-    const currentKeys = Array.isArray(existing.images) ? existing.images : [];
-    const keepKeys =
-      keepRaw === undefined
-        ? // If not provided, keep everything that already exists (safer)
-          [...currentKeys]
-        : // Normalize every entry to an S3 key
-          keepRaw.map(urlToKey).filter(Boolean);
+      if (!url.startsWith("http")) return url; // already key
 
-    // 3) Upload new files
-    const uploadedKeys = [];
-    if (Array.isArray(req.files) && req.files.length > 0) {
+      try {
+        const u = new URL(url);
+        return decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+      } catch {
+        return url;
+      }
+    };
+
+    const currentKeys = existing.images || [];
+
+    // ==============================
+    // 3. FRONTEND SENT IMAGES (KEEP)
+    // ==============================
+    const keepImagesRaw =
+      req.body.keepImages ||
+      req.body.images ||
+      req.body.existingImages;
+
+    const keepKeys = parseArray(keepImagesRaw)
+      .map(urlToKey)
+      .filter(Boolean);
+
+    // ==============================
+    // 4. UPLOAD NEW FILES
+    // ==============================
+    const newUploadedKeys = [];
+
+    if (req.files?.length) {
       for (const file of req.files) {
         const { key } = await uploadBuffer({
           buffer: file.buffer,
           contentType: file.mimetype,
           folder: "content",
           filename: file.originalname,
-          metadata: { entity: "content", id },
         });
-        uploadedKeys.push(key);
+
+        newUploadedKeys.push(key);
       }
     }
 
-    // Support pre-uploaded new URLs/keys from presigned URL bypass
-    if (req.body.uploadedImages) {
-      const parsedNew = parseMaybeJson(req.body.uploadedImages);
-      if (Array.isArray(parsedNew)) {
-        uploadedKeys.push(...parsedNew.map(urlToKey).filter(Boolean));
-      } else if (typeof parsedNew === "string") {
-        uploadedKeys.push(urlToKey(parsedNew));
-      }
-    }
+    // ==============================
+    // 5. FINAL IMAGE LIST
+    // ==============================
+    const finalKeys = [...new Set([...keepKeys, ...newUploadedKeys])];
 
-    // 4) Final set = keepKeys ∪ uploadedKeys (dedup)
-    const finalSet = Array.from(
-      new Set([...(keepKeys || []), ...uploadedKeys]),
+    // ==============================
+    // 6. DELETE UNUSED IMAGES
+    // ==============================
+    const toDelete = currentKeys.filter(
+      (key) => !finalKeys.includes(key)
     );
 
-    // 5) Figure out what to delete from S3: old minus final
-    const finalSetLookup = new Set(finalSet);
-    const oldKeysToDelete = currentKeys.filter((k) => !finalSetLookup.has(k));
-
-    // 6) Save and then delete old files
-    existing.images = finalSet;
+    // ==============================
+    // 7. SAVE DB FIRST
+    // ==============================
+    existing.images = finalKeys;
     await existing.save();
 
-    for (const k of oldKeysToDelete) {
+    // ==============================
+    // 8. DELETE FROM S3
+    // ==============================
+    for (const key of toDelete) {
       try {
-        await deleteObject(k);
-      } catch (e) {
-        console.warn("[content:edit] S3 delete failed:", e);
+        await deleteObject(key);
+      } catch (err) {
+        console.warn("S3 delete failed:", key);
       }
     }
 
-    const imageUrls = await keysToUrls(existing.images || []);
+    // ==============================
+    // 9. RETURN UPDATED DATA
+    // ==============================
+    const imageUrls = await keysToUrls(finalKeys);
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       message: "Content updated successfully",
       data: {
-        id: existing._id,
-        section: existing.section,
-        title: existing.title,
-        body: existing.body,
-        link: existing.link,
-        isActive: existing.isActive,
-        images: imageUrls, // always return URLs
+        ...existing.toObject(),
+        imageUrls,
       },
     });
-  } catch (err) {
-    console.error("[content:edit] Error:", err);
+  } catch (error) {
+    console.error("[UPDATE ERROR]", error);
+
     return res.status(500).json({
       success: false,
-      error: "Internal server error",
-      message: err.message,
+      message: "Server error",
+      error: error.message,
     });
   }
 });
