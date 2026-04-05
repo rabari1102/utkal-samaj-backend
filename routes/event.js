@@ -171,19 +171,58 @@ router.get("/getEventById/:id", async (req, res) => {
 
   try {
     const event = await Event.findById(id);
+
     if (!event) {
-      return res.status(404).json({ success: false, error: "Event not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Event not found",
+      });
     }
 
+    // ==============================
+    // 🔥 DATE CHECK
+    // ==============================
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const eventDate = new Date(event.eventDate);
+    eventDate.setHours(0, 0, 0, 0);
+
+    let updatedType = event.type;
+
+    if (eventDate > today) {
+      updatedType = "upcoming";
+    } else {
+      updatedType = "past"; // includes today
+    }
+
+    // ==============================
+    // 🔥 UPDATE ONLY IF CHANGED
+    // ==============================
+    if (event.type !== updatedType) {
+      event.type = updatedType;
+      await event.save();
+    }
+
+    // ==============================
+    // IMAGE URLS
+    // ==============================
     const data = {
       ...event.toObject(),
       imageUrls: await keysToUrls(event.images || []),
     };
 
-    res.status(200).json({ success: true, data });
+    return res.status(200).json({
+      success: true,
+      data,
+    });
   } catch (error) {
     console.error("Error fetching event by ID:", error);
-    res.status(500).json({ success: false, error: "Server error" });
+
+    return res.status(500).json({
+      success: false,
+      error: "Server error",
+    });
   }
 });
 
