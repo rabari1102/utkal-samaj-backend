@@ -20,7 +20,7 @@ const USE_PUBLIC = ACL === "public-read";
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 3 * 1024 * 1024,  // ✅ 3 MB per file
+    fileSize: 3 * 1024 * 1024, // ✅ 3 MB per file
     fieldSize: 25 * 1024 * 1024, // 25 MB total for text fields (default ~1MB)
     fields: 50, // optional: max number of text fields
   },
@@ -71,24 +71,30 @@ router.post(
           imageKeys.push(key);
         }
       }
-      
+
       // Support pre-uploaded images (from presigned URL via frontend bypassing Vercel limits)
       if (req.body.uploadedImages) {
         try {
           let parsed = req.body.uploadedImages;
-          if (typeof parsed === 'string') {
-            try { parsed = JSON.parse(parsed); } catch(_) { parsed = parsed.split(',').map(s=>s.trim()).filter(Boolean); }
+          if (typeof parsed === "string") {
+            try {
+              parsed = JSON.parse(parsed);
+            } catch (_) {
+              parsed = parsed
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+            }
           }
           if (Array.isArray(parsed)) {
             imageKeys.push(...parsed);
-          } else if (typeof parsed === 'string') {
+          } else if (typeof parsed === "string") {
             imageKeys.push(parsed);
           }
-        } catch(e) {
-          console.warn('[content:create] Failed parsing uploadedImages', e);
+        } catch (e) {
+          console.warn("[content:create] Failed parsing uploadedImages", e);
         }
       }
-
 
       const doc = await Content.create({
         section,
@@ -114,35 +120,51 @@ router.post(
         message: error.message,
       });
     }
-  }
+  },
 );
 
 // -------------------- getAll --------------------
 router.get("/getContent", async (_req, res) => {
   try {
-    // 1) Fetch plain objects
+    // 1) Fetch latest documents first
     const items = await Content.find().sort({ createdAt: -1 }).lean().exec();
 
-    // 2) Collect all image keys across docs (dedup) - USE "images", not "image"
+    // 2) Collect all image keys (deduplicated)
     const allKeys = Array.from(
       new Set(
         items
           .flatMap((doc) => (Array.isArray(doc.images) ? doc.images : []))
-          .filter(Boolean)
-      )
+          .filter(Boolean),
+      ),
     );
 
-    // 3) Batch resolve to URLs just once (guard against empty input)
+    // 3) Convert S3 keys → URLs
     const urlList = allKeys.length ? await keysToUrls(allKeys) : [];
     const keyToUrl = new Map(allKeys.map((k, i) => [k, urlList[i]]));
 
-    // 4) Attach imageUrls per item using the map
-    const data = items.map((doc) => ({
-      ...doc,
-      imageUrls: (Array.isArray(doc.images) ? doc.images : [])
-        .map((k) => keyToUrl.get(k))
-        .filter(Boolean),
-    }));
+    // 4) Attach sorted imageUrls (latest first)
+    const data = items.map((doc) => {
+      let sortedKeys = Array.isArray(doc.images) ? [...doc.images] : [];
+
+      // 🔥 Try timestamp-based sorting (if keys contain timestamp)
+      sortedKeys.sort((a, b) => {
+        const getTime = (key) => {
+          const match = key.match(/\d{10,13}/); // extract timestamp
+          return match ? parseInt(match[0]) : 0;
+        };
+        return getTime(b) - getTime(a); // latest first
+      });
+
+      // fallback: if no timestamps → reverse
+      if (!sortedKeys.some((k) => /\d{10,13}/.test(k))) {
+        sortedKeys.reverse();
+      }
+
+      return {
+        ...doc,
+        imageUrls: sortedKeys.map((k) => keyToUrl.get(k)).filter(Boolean),
+      };
+    });
 
     return res.json({
       success: true,
@@ -151,6 +173,7 @@ router.get("/getContent", async (_req, res) => {
     });
   } catch (error) {
     console.error("[content:getAll] Error:", error);
+
     return res.status(500).json({
       success: false,
       error: "Server error",
@@ -233,7 +256,7 @@ router.patch(
             console.warn(
               "[content:patch] Failed to delete S3 object:",
               key,
-              e?.message
+              e?.message,
             );
           }
         }
@@ -286,7 +309,7 @@ router.patch(
         message: error.message,
       });
     }
-  }
+  },
 );
 
 // -------------------- PUT (full update) --------------------
@@ -297,7 +320,9 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
     const { id } = req.params;
     const existing = await Content.findById(id);
     if (!existing) {
-      return res.status(404).json({ success: false, error: "Content not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Content not found" });
     }
 
     // 1) Update only provided scalar fields
@@ -313,8 +338,8 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
         typeof raw === "boolean"
           ? raw
           : typeof raw === "string"
-          ? ["true", "1", "yes", "on"].includes(raw.toLowerCase())
-          : Boolean(raw);
+            ? ["true", "1", "yes", "on"].includes(raw.toLowerCase())
+            : Boolean(raw);
     }
 
     // Helpers
@@ -325,8 +350,15 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
       if (val == null) return undefined;
       if (Array.isArray(val)) return val;
       if (typeof val === "string") {
-        try { return JSON.parse(val); } catch (_) { /* not JSON */ }
-        return val.split(",").map(s => s.trim()).filter(Boolean);
+        try {
+          return JSON.parse(val);
+        } catch (_) {
+          /* not JSON */
+        }
+        return val
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
       return val;
     };
@@ -343,7 +375,11 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
 
         // CloudFront/custom CDN, e.g. https://cdn.example.com/content/abc.png
         if (CLOUDFRONT_URL && u.startsWith(CLOUDFRONT_URL)) {
-          return decodeURIComponent(u.substring(CLOUDFRONT_URL.length + (CLOUDFRONT_URL.endsWith("/") ? 0 : 1)));
+          return decodeURIComponent(
+            u.substring(
+              CLOUDFRONT_URL.length + (CLOUDFRONT_URL.endsWith("/") ? 0 : 1),
+            ),
+          );
         }
 
         // Virtual-hosted–style S3: https://<bucket>.s3.amazonaws.com/<key>
@@ -357,7 +393,10 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
 
         // Path-style S3: https://s3.amazonaws.com/<bucket>/<key> or region variant
         const pathStyle = url.pathname.split("/").filter(Boolean);
-        if (pathStyle.length >= 2 && (host.startsWith("s3.") || host === "s3.amazonaws.com")) {
+        if (
+          pathStyle.length >= 2 &&
+          (host.startsWith("s3.") || host === "s3.amazonaws.com")
+        ) {
           const [, ...rest] = pathStyle; // drop bucket
           return decodeURIComponent(rest.join("/"));
         }
@@ -398,20 +437,21 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
         uploadedKeys.push(key);
       }
     }
-    
+
     // Support pre-uploaded new URLs/keys from presigned URL bypass
     if (req.body.uploadedImages) {
       const parsedNew = parseMaybeJson(req.body.uploadedImages);
       if (Array.isArray(parsedNew)) {
         uploadedKeys.push(...parsedNew.map(urlToKey).filter(Boolean));
-      } else if (typeof parsedNew === 'string') {
+      } else if (typeof parsedNew === "string") {
         uploadedKeys.push(urlToKey(parsedNew));
       }
     }
 
-
     // 4) Final set = keepKeys ∪ uploadedKeys (dedup)
-    const finalSet = Array.from(new Set([...(keepKeys || []), ...uploadedKeys]));
+    const finalSet = Array.from(
+      new Set([...(keepKeys || []), ...uploadedKeys]),
+    );
 
     // 5) Figure out what to delete from S3: old minus final
     const finalSetLookup = new Set(finalSet);
@@ -422,7 +462,11 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
     await existing.save();
 
     for (const k of oldKeysToDelete) {
-      try { await deleteObject(k); } catch (e) { console.warn("[content:edit] S3 delete failed:", e); }
+      try {
+        await deleteObject(k);
+      } catch (e) {
+        console.warn("[content:edit] S3 delete failed:", e);
+      }
     }
 
     const imageUrls = await keysToUrls(existing.images || []);
@@ -468,7 +512,7 @@ router.delete("/:id", async (req, res) => {
           console.warn(
             "[content:delete] Failed to delete S3 object:",
             key,
-            e?.message
+            e?.message,
           );
         }
       }
