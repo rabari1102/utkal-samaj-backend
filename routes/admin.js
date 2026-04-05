@@ -21,10 +21,10 @@ const USE_PUBLIC = ACL === "public-read";
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024,  // 50 MB per file
-    files: 50,                   // up to 50 files
-    fieldSize: 100 * 1024 * 1024, // 100 MB for text fields total
-    parts: 300,                  // total parts (files + fields)
+    fileSize: 3 * 1024 * 1024,  // ✅ 3 MB per file
+    files: 50,
+    fieldSize: 100 * 1024 * 1024,
+    parts: 300,
   },
 });
 

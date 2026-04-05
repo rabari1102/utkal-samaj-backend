@@ -27,7 +27,7 @@ const ALLOWED_IMAGE_TYPES = new Set([
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 3 * 1024 * 1024 }, // 10MB
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
       return cb(new Error("Unsupported file type"));
