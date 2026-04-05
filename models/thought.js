@@ -9,9 +9,9 @@ const thoughtSchema = new mongoose.Schema(
       validate: {
         validator: function (value) {
           const wordCount = value.trim().split(/\s+/).length;
-          return wordCount === 5;
+          return wordCount >= 5 && wordCount <= 25;
         },
-        message: "Thought must contain exactly 5 words",
+        message: "Thought must contain between 5 and 25 words",
       },
     },
   },

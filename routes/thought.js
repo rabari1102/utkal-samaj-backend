@@ -17,10 +17,10 @@ router.post("/addThought", async (req, res) => {
 
     const wordCount = thought.trim().split(/\s+/).length;
 
-    if (wordCount !== 5) {
+    if (wordCount < 5 || wordCount > 25) {
       return res.status(400).json({
         success: false,
-        message: "Thought must contain exactly 5 words",
+        message: "Thought must contain between 5 and 25 words",
       });
     }
 
@@ -60,10 +60,10 @@ router.put("/updateThought/:id", async (req, res) => {
     if (thought !== undefined) {
       const wordCount = thought.trim().split(/\s+/).length;
 
-      if (wordCount !== 5) {
+      if (wordCount < 5 || wordCount > 25) {
         return res.status(400).json({
           success: false,
-          message: "Thought must contain exactly 5 words",
+          message: "Thought must contain between 5 and 25 words",
         });
       }
 
