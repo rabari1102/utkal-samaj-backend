@@ -328,7 +328,7 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
     }
 
     // ==============================
-    // 1. Update normal fields
+    // 1. Update fields
     // ==============================
     const fields = ["section", "title", "body", "link"];
     fields.forEach((f) => {
@@ -361,8 +361,7 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
 
     const urlToKey = (url) => {
       if (!url) return null;
-
-      if (!url.startsWith("http")) return url; // already key
+      if (!url.startsWith("http")) return url;
 
       try {
         const u = new URL(url);
@@ -375,21 +374,22 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
     const currentKeys = existing.images || [];
 
     // ==============================
-    // 3. FRONTEND SENT IMAGES (KEEP)
+    // 3. GET ALL IMAGES FROM FRONTEND (IMPORTANT FIX)
     // ==============================
-    const keepImagesRaw =
+    const incomingImagesRaw =
       req.body.keepImages ||
       req.body.images ||
-      req.body.existingImages;
+      req.body.existingImages ||
+      [];
 
-    const keepKeys = parseArray(keepImagesRaw)
+    const incomingKeys = parseArray(incomingImagesRaw)
       .map(urlToKey)
       .filter(Boolean);
 
     // ==============================
     // 4. UPLOAD NEW FILES
     // ==============================
-    const newUploadedKeys = [];
+    const uploadedKeys = [];
 
     if (req.files?.length) {
       for (const file of req.files) {
@@ -400,24 +400,26 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
           filename: file.originalname,
         });
 
-        newUploadedKeys.push(key);
+        uploadedKeys.push(key);
       }
     }
 
     // ==============================
-    // 5. FINAL IMAGE LIST
+    // 🔥 5. FINAL MERGE (IMPORTANT)
     // ==============================
-    const finalKeys = [...new Set([...keepKeys, ...newUploadedKeys])];
+    const finalKeys = Array.from(
+      new Set([...incomingKeys, ...uploadedKeys])
+    );
 
     // ==============================
-    // 6. DELETE UNUSED IMAGES
+    // 6. DELETE ONLY MISSING IMAGES
     // ==============================
     const toDelete = currentKeys.filter(
       (key) => !finalKeys.includes(key)
     );
 
     // ==============================
-    // 7. SAVE DB FIRST
+    // 7. SAVE DB
     // ==============================
     existing.images = finalKeys;
     await existing.save();
@@ -434,7 +436,7 @@ router.put("/:id", upload.array("images", 12), async (req, res) => {
     }
 
     // ==============================
-    // 9. RETURN UPDATED DATA
+    // 9. RESPONSE
     // ==============================
     const imageUrls = await keysToUrls(finalKeys);
 
