@@ -37,10 +37,10 @@ function extractS3KeyFromUrl(inputUrl, opts = {}) {
   try {
     const u = new URL(inputUrl);
     // strip query & leading slash; decode in case of spaces etc.
-    let pathname = decodeURIComponent(u.pathname || '');
-    if (pathname.startsWith('/')) pathname = pathname.slice(1);
+    let pathname = decodeURIComponent(u.pathname || "");
+    if (pathname.startsWith("/")) pathname = pathname.slice(1);
 
-    const host = (u.host || '').toLowerCase();
+    const host = (u.host || "").toLowerCase();
 
     // CloudFront domain
     if (cloudfrontDomain && host === cloudfrontDomain.toLowerCase()) {
@@ -48,13 +48,13 @@ function extractS3KeyFromUrl(inputUrl, opts = {}) {
     }
 
     // Virtual-hosted-style: <bucket>.s3.<region>.amazonaws.com/<key>
-    if (bucket && host.startsWith(bucket.toLowerCase() + '.s3')) {
+    if (bucket && host.startsWith(bucket.toLowerCase() + ".s3")) {
       return pathname;
     }
 
     // Path-style: s3.<region>.amazonaws.com/<bucket>/<key>
-    if (host.includes('amazonaws.com')) {
-      if (pathname.startsWith(bucket + '/')) {
+    if (host.includes("amazonaws.com")) {
+      if (pathname.startsWith(bucket + "/")) {
         return pathname.slice(bucket.length + 1);
       }
       return pathname;
@@ -67,14 +67,13 @@ function extractS3KeyFromUrl(inputUrl, opts = {}) {
   }
 }
 
-
 /**
  * @route GET /getAllEvents
  * @desc Get all events (latest first)
  */
 router.get("/getAllEvents", async (_req, res) => {
   try {
-    const events = await Event.find().sort({ eventDate: -1 });
+    const events = await Event.find();
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -82,23 +81,44 @@ router.get("/getAllEvents", async (_req, res) => {
     const upcoming = [];
     const past = [];
 
+    // ==============================
+    // 🔥 Optimize S3 calls
+    // ==============================
+    const allKeys = [...new Set(events.flatMap((e) => e.images || []))];
+
+    const urls = allKeys.length ? await keysToUrls(allKeys) : [];
+    const keyToUrl = new Map(allKeys.map((k, i) => [k, urls[i]]));
+
+    // ==============================
+    // Categorize
+    // ==============================
     for (const event of events) {
       const eventDate = new Date(event.eventDate);
       eventDate.setHours(0, 0, 0, 0);
 
       const eventData = {
         ...event.toObject(),
-        imageUrls: await keysToUrls(event.images || []),
+        imageUrls: (event.images || [])
+          .map((k) => keyToUrl.get(k))
+          .filter(Boolean),
       };
 
       if (eventDate > today) {
-        // ✅ Only future
         upcoming.push(eventData);
       } else {
-        // ✅ Today + Past
         past.push(eventData);
       }
     }
+
+    // ==============================
+    // 🔥 SORTING (IMPORTANT)
+    // ==============================
+
+    // Upcoming → nearest first
+    upcoming.sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate));
+
+    // Past → latest first
+    past.sort((a, b) => new Date(b.eventDate) - new Date(a.eventDate));
 
     return res.status(200).json({
       success: true,
@@ -132,7 +152,7 @@ router.get("/past", async (_req, res) => {
       events.map(async (event) => ({
         ...event.toObject(),
         imageUrls: await keysToUrls(event.images || []),
-      }))
+      })),
     );
 
     res.status(200).json({ success: true, data });
@@ -229,7 +249,7 @@ router.post(
 
         const paymentOrder = await createPaymentOrder(
           totalAmount,
-          `Event Registration - ${event.title}`
+          `Event Registration - ${event.title}`,
         );
 
         registration.paymentId = paymentOrder.id;
@@ -259,7 +279,7 @@ router.post(
       console.error("Event registration error:", error);
       res.status(500).json({ success: false, error: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -291,7 +311,7 @@ router.delete("/events/:id", async (req, res) => {
         } catch (e) {
           console.warn(
             `[event:delete] Failed to delete S3 object "${key}":`,
-            e?.message || e
+            e?.message || e,
           );
         }
       });
@@ -321,7 +341,7 @@ router.delete("/:id/images", async (req, res) => {
   try {
     const { id } = req.params;
     const { url } = req.body;
-console.log(url);
+    console.log(url);
 
     if (typeof url !== "string" || url.trim() === "") {
       return res
@@ -354,7 +374,7 @@ console.log(url);
     } catch (e) {
       console.warn(
         `[event:image:delete] Failed to delete S3 object "${key}":`,
-        e?.message || e
+        e?.message || e,
       );
     }
 
@@ -365,7 +385,7 @@ console.log(url);
     const updated = await Event.findByIdAndUpdate(
       id,
       { $pull: { images: { $in: [key, url] } } },
-      { new: true }
+      { new: true },
     );
 
     const afterCount = Array.isArray(updated?.images)
