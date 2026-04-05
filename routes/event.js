@@ -73,57 +73,38 @@ function extractS3KeyFromUrl(inputUrl, opts = {}) {
  */
 router.get("/getAllEvents", async (_req, res) => {
   try {
-    const events = await Event.find();
+    const events = await Event.find().sort({ eventDate: -1 });
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const upcoming = [];
+    const todayEvents = [];
     const past = [];
 
-    // ==============================
-    // 🔥 Optimize S3 calls
-    // ==============================
-    const allKeys = [...new Set(events.flatMap((e) => e.images || []))];
-
-    const urls = allKeys.length ? await keysToUrls(allKeys) : [];
-    const keyToUrl = new Map(allKeys.map((k, i) => [k, urls[i]]));
-
-    // ==============================
-    // Categorize
-    // ==============================
     for (const event of events) {
       const eventDate = new Date(event.eventDate);
       eventDate.setHours(0, 0, 0, 0);
 
       const eventData = {
         ...event.toObject(),
-        imageUrls: (event.images || [])
-          .map((k) => keyToUrl.get(k))
-          .filter(Boolean),
+        imageUrls: await keysToUrls(event.images || []),
       };
 
       if (eventDate > today) {
         upcoming.push(eventData);
+      } else if (eventDate.getTime() === today.getTime()) {
+        todayEvents.push(eventData);
       } else {
         past.push(eventData);
       }
     }
 
-    // ==============================
-    // 🔥 SORTING (IMPORTANT)
-    // ==============================
-
-    // Upcoming → nearest first
-    upcoming.sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate));
-
-    // Past → latest first
-    past.sort((a, b) => new Date(b.eventDate) - new Date(a.eventDate));
-
     return res.status(200).json({
       success: true,
       data: {
         upcomingEvents: upcoming,
+        todayEvents: todayEvents,
         pastEvents: past,
       },
     });
