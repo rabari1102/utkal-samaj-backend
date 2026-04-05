@@ -76,17 +76,44 @@ router.get("/getAllEvents", async (_req, res) => {
   try {
     const events = await Event.find().sort({ eventDate: -1 });
 
-    const data = await Promise.all(
-      events.map(async (event) => ({
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const upcoming = [];
+    const past = [];
+
+    for (const event of events) {
+      const eventDate = new Date(event.eventDate);
+      eventDate.setHours(0, 0, 0, 0);
+
+      const eventData = {
         ...event.toObject(),
         imageUrls: await keysToUrls(event.images || []),
-      }))
-    );
+      };
 
-    res.status(200).json({ success: true, data });
+      if (eventDate > today) {
+        // ✅ Only future
+        upcoming.push(eventData);
+      } else {
+        // ✅ Today + Past
+        past.push(eventData);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        upcomingEvents: upcoming,
+        pastEvents: past,
+      },
+    });
   } catch (error) {
     console.error("Error fetching events:", error);
-    res.status(500).json({ success: false, error: "Server error" });
+
+    return res.status(500).json({
+      success: false,
+      error: "Server error",
+    });
   }
 });
 
